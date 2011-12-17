@@ -19,11 +19,11 @@ storage system for queued data.
 
 =head1 VERSION
 
-Version 1.6
+Version 1.6.1
 
 =cut
 
-our $VERSION = '1.6';
+our $VERSION = '1.6.1';
 
 
 our $UNLIMITED_RETRIES = -1;
@@ -843,7 +843,7 @@ Guillaume Aubert, C<< <aubertg at cpan.org> >>.
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-queue-safe at rt.cpan.org>, or through
+Please report any bugs or feature requests to C<bug-queue-dbi at rt.cpan.org>, or through
 the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Queue-DBI>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
 
@@ -887,7 +887,7 @@ Thanks to Jamie McCarthy for the locking mechanism improvements in version 1.1.
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2009 Guillaume Aubert.
+Copyright 2009-2011 Guillaume Aubert.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the Artistic License.
