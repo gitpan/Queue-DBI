@@ -1,8 +1,10 @@
+.perlcriticrc
 Build.PL
 Changes
 ignore.txt
 lib/Queue/DBI.pm
 lib/Queue/DBI/Element.pm
+Makefile.PL
 MANIFEST			This list of files
 MANIFEST.SKIP
 META.yml
@@ -17,5 +19,6 @@ t/50-max_requeue_count.t
 t/60-get_element_by_id.t
 t/99-cleanup.t
 t/manifest.t
+t/module_versions.t
 t/pod.t
 t/pod-coverage.t

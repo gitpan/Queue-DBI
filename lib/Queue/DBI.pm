@@ -19,11 +19,11 @@ storage system for queued data.
 
 =head1 VERSION
 
-Version 1.7.1
+Version 1.7.2
 
 =cut
 
-our $VERSION = '1.7.1';
+our $VERSION = '1.7.2';
 
 
 our $UNLIMITED_RETRIES = -1;
@@ -156,10 +156,10 @@ sub new
 	# Check parameters.
 	foreach my $arg ( qw( queue_name database_handle ) )
 	{
-		die "Argument '$_' is needed to create the Queue::DBI object"
-			unless defined( $args{$arg} ) && ( $args{$arg} ne '' );
+		croak "Argument '$arg' is needed to create the Queue::DBI object"
+			if !defined( $args{$arg} ) || ( $args{$arg} eq '' );
 	}
-	die 'Cleanup timeout must be an integer representing seconds'
+	croak 'Cleanup timeout must be an integer representing seconds'
 		if defined( $args{'cleanup_timeout'} ) && ( $args{'cleanup_timeout'} !~ m/^\d+$/ );
 	
 	# Create the object.
@@ -191,9 +191,9 @@ sub new
 		{},
 		$args{'queue_name'},
 	);
-	die "The queue >$args{'queue_name'}< doesn't exist in the lookup table."
+	croak "The queue >$args{'queue_name'}< doesn't exist in the lookup table."
 		unless defined( $queue[0] ) && ( $queue[0] =~ m/^\d+$/ );
-	$self->{'queue_id'} = $queue[0],
+	$self->{'queue_id'} = $queue[0];
 	
 	$self->verbose( $args{'verbose'} )
 		if defined( $args{'verbose'} );
@@ -271,7 +271,7 @@ sub max_requeue_count
 		}
 		else
 		{
-			die 'max_requeue_count must be an integer or $Queue::DBI::UNLIMITED_RETRIES';
+			croak 'max_requeue_count must be an integer or $Queue::DBI::UNLIMITED_RETRIES';
 		}
 	}
 	
@@ -319,7 +319,7 @@ sub count
 		),
 		{},
 		$self->get_queue_id(),
-	) || die 'Cannot execute SQL: ' . $dbh->errstr;
+	) || croak 'Cannot execute SQL: ' . $dbh->errstr();
 	
 	my $element_count = defined( $data ) && defined( $data->[0] ) ? $data->[0] : 0;
 	
@@ -350,7 +350,7 @@ sub enqueue
 	carp "Data is: " . Dumper( $data ) if $verbose > 1;
 	
 	my $encoded_data = MIME::Base64::encode_base64( Storable::freeze( $data ) );
-	die 'The size of the data to store exceeds the maximum internal storage size available.'
+	croak 'The size of the data to store exceeds the maximum internal storage size available.'
 		if length( $encoded_data ) > $MAX_VALUE_SIZE;
 	
 	$dbh->do(
@@ -365,7 +365,7 @@ sub enqueue
 		$self->get_queue_id(),
 		$encoded_data,
 		time(),
-	) || die 'Cannot execute SQL: ' . $dbh->errstr();
+	) || croak 'Cannot execute SQL: ' . $dbh->errstr();
 	
 	# We need to reset the internal cached value preventing infinite loops, other-
 	# wise this new element will not be taken into account by the current queue
@@ -397,7 +397,7 @@ elements can be specified using 'search_in_ids':
 
 =cut
 
-sub next
+sub next ## no critic (Subroutines::ProhibitBuiltinHomonyms)
 {
 	my ( $self, %args ) = @_;
 	my $verbose = $self->verbose();
@@ -451,7 +451,7 @@ sub retrieve_batch
 	carp "Entering retrieve_batch()." if $verbose;
 	
 	# Check parameters
-	die 'The number of elements to retrieve from the queue is not properly formatted'
+	croak 'The number of elements to retrieve from the queue is not properly formatted'
 		unless defined( $number_of_elements_to_retrieve ) && ( $number_of_elements_to_retrieve =~ m/^\d+$/ );
 	
 	# Prevent infinite loops
@@ -469,7 +469,7 @@ sub retrieve_batch
 			{},
 			$self->get_queue_id(),
 		);
-		die 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
+		croak 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
 		if ( defined( $data ) && defined( $data->[0] ) )
 		{
 			$self->{'max_id'} = $data->[0];
@@ -478,7 +478,7 @@ sub retrieve_batch
 		{
 			# Empty queue
 			carp "Detected empty queue, leaving." if $verbose;
-			return undef;
+			return;
 		}
 	}
 	
@@ -529,11 +529,11 @@ sub retrieve_batch
 		$self->{'max_id'},
 		$number_of_elements_to_retrieve,
 	);
-	die 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
+	croak 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
 	
 	# All the remaining elements are locked
 	return []
-		unless defined( $data ) && ( scalar( @$data) != 0 );
+		if !defined( $data ) || ( scalar( @$data) == 0 );
 	
 	# Create objects
 	carp "Creating new Queue::DBI::Element objects." if $verbose;
@@ -581,7 +581,7 @@ sub get_element_by_id
 	carp "Entering get_element_by_id()." if $verbose;
 	
 	# Check parameters.
-	die 'A queue element ID is required by this method'
+	croak 'A queue element ID is required by this method'
 		unless defined( $queue_element_id );
 	
 	# Retrieve the specified element from the queue.
@@ -600,11 +600,10 @@ sub get_element_by_id
 		$self->get_queue_id(),
 		$queue_element_id,
 	);
-	die 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
+	croak 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
 	
 	# Queue element ID doesn't exist or belongs to another queue.
-	return undef
-		unless defined( $data );
+	return unless defined( $data );
 	
 	# Create the Queue::DBI::Element object.
 	carp "Creating a new Queue::DBI::Element object." if $verbose;
@@ -644,7 +643,7 @@ sub cleanup
 	carp "Entering cleanup()." if $verbose;
 	
 	$time_in_seconds ||= '';
-	die 'Time in seconds is not correctly formatted'
+	croak 'Time in seconds is not correctly formatted'
 		unless $time_in_seconds =~ m/^\d+$/;
 	
 	# Find all the orphans
@@ -663,7 +662,7 @@ sub cleanup
 		$self->get_queue_id(),
 		time() - $time_in_seconds,
 	);
-	die 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
+	croak 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
 	return []
 		unless defined( $rows );
 	
@@ -714,7 +713,7 @@ sub create_tables
 	my ( %args ) = @_;
 	
 	# Check arguments.
-	die 'Missing database handle'
+	croak 'Missing database handle'
 		unless defined( $args{'dbh'} );
 	
 	foreach my $arg ( qw( drop_if_exist sqlite ) )
@@ -779,6 +778,8 @@ sub create_tables
 			ENGINE=InnoDB
 		|
 	);
+	
+	return 1;
 }
 
 
@@ -880,14 +881,22 @@ L<http://search.cpan.org/dist/Queue-DBI/>
 
 =head1 ACKNOWLEDGEMENTS
 
-Thanks to Geeknet, Inc. L<http://www.geek.net> for funding the initial development of this code!
+Thanks to ThinkGeek (L<http://www.thinkgeek.com/>) and its corporate overlords
+at Geeknet (L<http://www.geek.net/>), for footing the bill while I eat pizza
+and write code for them!
 
-Thanks to Jamie McCarthy for the locking mechanism improvements in version 1.1.
+Thanks to Jacob Rose C<< <jacob at thinkgeek.com> >>, who wrote the first
+queueing module at ThinkGeek L<http://www.thinkgeek.com> and whose work
+provided the inspiration to write this full-fledged queueing system. His
+contribution to shaping the original API in version 1.0.0 was also very
+valuable.
+
+Thanks to Jamie McCarthy for the locking mechanism improvements in version 1.1.0.
 
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2009-2011 Guillaume Aubert.
+Copyright 2009-2012 Guillaume Aubert.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the Artistic License.

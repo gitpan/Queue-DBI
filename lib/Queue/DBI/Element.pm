@@ -12,11 +12,11 @@ Queue::DBI::Element - An object representing an element pulled from the queue
 
 =head1 VERSION
 
-Version 1.7.1
+Version 1.7.2
 
 =cut
 
-our $VERSION = '1.7.1';
+our $VERSION = '1.7.2';
 
 
 =head1 SYNOPSIS
@@ -54,10 +54,10 @@ sub new
 	# Check parameters
 	foreach my $arg ( qw( data id requeue_count ) )
 	{
-		die "Argument '$arg' is needed to create the Queue::DBI object"
-			unless defined( $args{$arg} ) && ( $args{$arg} ne '' );
+		croak "Argument '$arg' is needed to create the Queue::DBI object"
+			if !defined( $args{$arg} ) || ( $args{$arg} eq '' );
 	}
-	die 'Pass a Queue::DBI object to create an Queue::DBI::Element object'
+	croak 'Pass a Queue::DBI object to create an Queue::DBI::Element object'
 		unless defined( $args{'queue'} ) && $args{'queue'}->isa( 'Queue::DBI' );
 	
 	# Create the object
@@ -91,7 +91,7 @@ of it
 
 =cut
 
-sub lock
+sub lock ## no critic (Subroutines::ProhibitBuiltinHomonyms)
 {
 	my ( $self ) = @_;
 	my $queue = $self->queue();
@@ -112,7 +112,7 @@ sub lock
 		{},
 		time(),
 		$self->id(),
-	) || die 'Cannot lock element: ' . $dbh->errstr;
+	) || croak 'Cannot lock element: ' . $dbh->errstr;
 	
 	my $success = ( defined( $rows ) && ( $rows == 1 ) ) ? 1 : 0;
 	carp "Element locked: " . ( $success ? 'success' : 'already locked or gone' ) . "." if $verbose;
@@ -235,7 +235,7 @@ sub success
 	
 	if ( ! defined( $rows ) || $rows == -1 )
 	{
-		die 'Cannot remove element: ' . $dbh->errstr();
+		croak 'Cannot remove element: ' . $dbh->errstr();
 	}
 	
 	my $success = 0;
@@ -249,7 +249,7 @@ sub success
 	{
 		# No LOCKED element found to delete, try to find an UNLOCKED one in case it
 		# got requeued by a parallel process.
-		my $rows = $dbh->do(
+		my $deleted_rows = $dbh->do(
 			sprintf(
 				q|
 					DELETE
@@ -262,12 +262,12 @@ sub success
 			$self->id(),
 		);
 		
-		if ( ! defined( $rows ) || $rows == -1 )
+		if ( ! defined( $deleted_rows ) || $deleted_rows == -1 )
 		{
-			die 'Cannot remove element: ' . $dbh->errstr;
+			croak 'Cannot remove element: ' . $dbh->errstr;
 		}
 		
-		if ( $rows == 1 )
+		if ( $deleted_rows == 1 )
 		{
 			# An UNLOCKED element was found and deleted. It probably means that
 			# another process is still working on that element as well (possibly
@@ -401,12 +401,22 @@ L<http://search.cpan.org/dist/Queue-DBI/>
 
 =head1 ACKNOWLEDGEMENTS
 
-Thanks to Geeknet, Inc. L<http://www.geek.net> for funding the initial development of this code!
+Thanks to ThinkGeek (L<http://www.thinkgeek.com/>) and its corporate overlords
+at Geeknet (L<http://www.geek.net/>), for footing the bill while I eat pizza
+and write code for them!
+
+Thanks to Jacob Rose C<< <jacob at thinkgeek.com> >>, who wrote the first
+queueing module at ThinkGeek L<http://www.thinkgeek.com> and whose work
+provided the inspiration to write this full-fledged queueing system. His
+contribution to shaping the original API in version 1.0.0 was also very
+valuable.
+
+Thanks to Jamie McCarthy for the locking mechanism improvements in version 1.1.0.
 
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2009-2011 Guillaume Aubert.
+Copyright 2009-2012 Guillaume Aubert.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the Artistic License.
