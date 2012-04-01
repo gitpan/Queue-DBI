@@ -19,11 +19,11 @@ storage system for queued data.
 
 =head1 VERSION
 
-Version 1.7.2
+Version 1.7.3
 
 =cut
 
-our $VERSION = '1.7.2';
+our $VERSION = '1.7.3';
 
 
 our $UNLIMITED_RETRIES = -1;
@@ -773,7 +773,7 @@ sub create_tables
 				`created` INT(10) UNSIGNED NOT NULL DEFAULT '0',
 				PRIMARY KEY (`queue_element_id`),
 				KEY `idx_fk_queue_id` (`queue_id`),
-				CONSTRAINT `queue_element_ibfk_1` FOREIGN KEY (`queue_id`) REFERENCES `queue` (`queue_id`)
+				CONSTRAINT `queue_element_ibfk_1` FOREIGN KEY (`queue_id`) REFERENCES `queues` (`queue_id`)
 			)
 			ENGINE=InnoDB
 		|

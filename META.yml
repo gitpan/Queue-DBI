@@ -1,5 +1,5 @@
 ---
-abstract: "A queueing module with an emphasis on safety, using DBI as a\nstorage system for queued data."
+abstract: 'A queueing module with an emphasis on safety, using DBI as a'
 author:
   - 'Guillaume Aubert <aubertg@cpan.org>'
 build_requires:
@@ -11,8 +11,9 @@ build_requires:
   Storable: 0
   Test::More: 0
 configure_requires:
-  Module::Build: 0.36
-generated_by: 'Module::Build version 0.3603'
+  Module::Build: 0
+dynamic_config: 1
+generated_by: 'Module::Build version 0.4, CPAN::Meta::Converter version 2.120530'
 license: artistic
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -21,12 +22,15 @@ name: Queue-DBI
 provides:
   Queue::DBI:
     file: lib/Queue/DBI.pm
-    version: v1.7.2
+    version: v1.7.3
   Queue::DBI::Element:
     file: lib/Queue/DBI/Element.pm
-    version: v1.7.2
+    version: v1.7.3
 requires:
   perl: 5.006
 resources:
+  bugtracker: http://rt.cpan.org/NoAuth/ReportBug.html?Queue=queue-dbi
+  homepage: https://metacpan.org/release/Queue-DBI
   license: http://opensource.org/licenses/artistic-license.php
-version: v1.7.2
+  repository: https://sourceforge.net/p/queuedbiperl/code
+version: v1.7.3
