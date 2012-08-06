@@ -52,6 +52,13 @@ lives_ok(
 	'Queue data.',
 );
 
+# Count elements in the queue.
+is(
+	$queue->count(),
+	1,
+	'There is one element queued.',
+);
+
 # Retrieve data.
 my $queue_element;
 lives_ok(
@@ -60,11 +67,6 @@ lives_ok(
 		$queue_element = $queue->next();
 	},
 	'Call to retrieve the next item in the queue.',
-);
-isa_ok(
-	$queue_element,
-	'Queue::DBI::Element',
-	'Object returned by next()',
 );
 
 # Lock.
@@ -88,4 +90,3 @@ lives_ok(
 	},
 	'Mark as successfully processed.',
 );
-

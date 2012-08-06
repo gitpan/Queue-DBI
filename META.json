@@ -1,5 +1,5 @@
 {
-   "abstract" : "A queueing module with an emphasis on safety, using DBI as a",
+   "abstract" : "A queueing module with an emphasis on safety, using DBI as a storage system for queued data.",
    "author" : [
       "Guillaume Aubert <aubertg@cpan.org>"
    ],
@@ -22,7 +22,8 @@
             "Data::Dumper" : "0",
             "MIME::Base64" : "0",
             "Storable" : "0",
-            "Test::More" : "0"
+            "Test::Exception" : "0",
+            "Test::More" : "0.94"
          }
       },
       "configure" : {
@@ -39,11 +40,11 @@
    "provides" : {
       "Queue::DBI" : {
          "file" : "lib/Queue/DBI.pm",
-         "version" : "v1.7.3"
+         "version" : "v1.8.0"
       },
       "Queue::DBI::Element" : {
          "file" : "lib/Queue/DBI/Element.pm",
-         "version" : "v1.7.3"
+         "version" : "v1.8.0"
       }
    },
    "release_status" : "stable",
@@ -53,11 +54,11 @@
       },
       "homepage" : "https://metacpan.org/release/Queue-DBI",
       "license" : [
-         "http://opensource.org/licenses/artistic-license.php"
+         "http://www.perlfoundation.org/artistic_license_1_0"
       ],
       "repository" : {
          "url" : "https://sourceforge.net/p/queuedbiperl/code"
       }
    },
-   "version" : "v1.7.3"
+   "version" : "v1.8.0"
 }

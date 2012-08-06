@@ -13,20 +13,20 @@ use Queue::DBI::Element;
 
 =head1 NAME
 
-Queue::DBI - A queueing module with an emphasis on safety, using DBI as a
-storage system for queued data.
+Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storage system for queued data.
 
 
 =head1 VERSION
 
-Version 1.7.3
+Version 1.8.0
 
 =cut
 
-our $VERSION = '1.7.3';
-
+our $VERSION = '1.8.0';
 
 our $UNLIMITED_RETRIES = -1;
+
+our $IMMORTAL_LIFE = -1;
 
 our $DEFAULT_QUEUES_TABLE_NAME = 'queues';
 
@@ -145,6 +145,12 @@ By default, Queue::DBI uses a table named 'queue_elements' to store the queued
 data. This allows using your own name, if you want to support separate queuing
 systems or legacy systems.
 
+=item * 'lifetime'
+
+By default, Queue:::DBI will fetch elements regardless of how old they are. Use
+this option to specify how old (in seconds) an element can be and still be
+retrieved for processing.
+
 =back
 
 =cut
@@ -161,6 +167,8 @@ sub new
 	}
 	croak 'Cleanup timeout must be an integer representing seconds'
 		if defined( $args{'cleanup_timeout'} ) && ( $args{'cleanup_timeout'} !~ m/^\d+$/ );
+	croak 'Lifetime must be an integer representing seconds'
+		if defined( $args{'lifetime'} ) && ( $args{'lifetime'} !~ m/^\d+$/ );
 	
 	# Create the object.
 	my $dbh = $args{'database_handle'};
@@ -204,6 +212,12 @@ sub new
 			: $Queue::DBI::UNLIMITED_RETRIES
 	);
 	
+	$self->lifetime(
+		defined( $args{'lifetime'} )
+			? $args{'lifetime'}
+			: $Queue::DBI::IMMORTAL_LIFE
+	);
+	
 	$self->cleanup( $args{'cleanup_timeout'} )
 		if defined( $args{'cleanup_timeout'} );
 	
@@ -238,6 +252,43 @@ sub verbose
 		if defined( $verbose );
 	
 	return $self->{'verbose'};
+}
+
+
+=head2 lifetime()
+
+Sets how old an element can be before it is ignored when retrieving elements.
+Set it to $Queue::DBI::IMMORTAL_LIFE to reset Queue::DBI back to its default
+behavior of retrieving elements without time limit.
+
+	# Don't pull queue elements that are more than an hour old.
+	$queue->lifetime( 3600 );
+	
+	# Keep pulling queue elements regardless of how old they are.
+	$queue->lifetime( $Queue::DBI::IMMORTAL_LIFE );
+	
+	# Find how old an element can be before the queue will stop retrieving it.
+	my $lifetime = $queue->lifetime();
+
+=cut
+
+sub lifetime
+{
+	my ( $self, $lifetime ) = @_;
+	
+	if ( defined( $lifetime ) )
+	{
+		if ( ( $lifetime =~ m/^\d+$/ ) || ( $lifetime eq $IMMORTAL_LIFE ) )
+		{
+			$self->{'lifetime'} = $lifetime;
+		}
+		else
+		{
+			croak 'lifetime must be an integer or $Queue::DBI::IMMORTAL_LIFE';
+		}
+	}
+	
+	return $self->{'lifetime'};
 }
 
 
@@ -374,7 +425,12 @@ sub enqueue
 	
 	carp "Element inserted, leaving enqueue()." if $verbose;
 	
-	return $dbh->{'mysql_insertid'};
+	return $dbh->last_insert_id(
+		undef,
+		undef,
+		$self->get_queue_elements_table_name(),
+		'queue_element_id',
+	);
 }
 
 
@@ -499,21 +555,30 @@ sub retrieve_batch
 		? 'AND requeue_count <= ' . $dbh->quote( $max_requeue_count )
 		: '';
 	
-	# Retrieve the first available elements from the queue
-	carp "Retrieving data." if $verbose;
-	carp "Parameters:\n\tLast ID: $self->{'last_id'}\n\tMax ID: $self->{'max_id'}\n" if $verbose > 1;
+	# Make sure we don't use elements that exceed the specified lifetime.
+	my $lifetime = $self->lifetime();
+	my $sql_lifetime = defined( $lifetime ) && ( $lifetime != $IMMORTAL_LIFE )
+		? 'AND created >= ' . ( time() - $lifetime )
+		: '';
+	
+	# If specified, retrieve only those IDs.
 	my $ids = defined( $args{'search_in_ids'} )
 		? 'AND queue_element_id IN (' . join( ',', map { $dbh->quote( $_ ) } @{ $args{'search_in_ids' } } ) . ')'
 		: '';
+	
+	# Retrieve the first available elements from the queue.
+	carp "Retrieving data." if $verbose;
+	carp "Parameters:\n\tLast ID: $self->{'last_id'}\n\tMax ID: $self->{'max_id'}\n" if $verbose > 1;
 	my $data = $dbh->selectall_arrayref(
 		sprintf(
 			q|
-				SELECT queue_element_id, data, requeue_count
+				SELECT queue_element_id, data, requeue_count, created
 				FROM %s
 				WHERE queue_id = ?
 					AND lock_time IS NULL
 					AND queue_element_id >= ?
 					AND queue_element_id <= ?
+					%s
 					%s
 					%s
 				ORDER BY queue_element_id ASC
@@ -522,6 +587,7 @@ sub retrieve_batch
 			$dbh->quote_identifier( $self->get_queue_elements_table_name() ),
 			$ids,
 			$sql_max_requeue_count,
+			$sql_lifetime,
 		),
 		{},
 		$self->get_queue_id(),
@@ -687,6 +753,82 @@ sub cleanup
 	
 	carp "Leaving cleanup()." if $verbose;
 	return $queue_elements;
+}
+
+
+=head2 purge()
+
+Remove (permanently, caveat emptor!) queue elements based on how many times
+they've been requeued or how old they are.
+
+	# Remove permanently elements that have been requeued 10 times or more.
+	$queue->purge( max_requeue_count => 10 );
+	
+	# Remove permanently elements that were created over an hour ago.
+	$queue->purge( lifetime => 3600 );
+
+Important: locked elements are not purged even if they match the criteria, as
+they are presumed to be currently in process and purging them would create
+unexpected failures in the application processing them.
+
+Also note that I<max_requeue_count> and I<lifetime> cannot be combined.
+
+=cut
+
+sub purge
+{
+	my ( $self, %args ) = @_;
+	my $verbose = $self->verbose();
+	my $dbh = $self->get_dbh();
+	carp "Entering cleanup()." if $verbose;
+	
+	my $max_requeue_count = $args{'max_requeue_count'};
+	my $lifetime = $args{'lifetime'};
+	
+	# Check parameters.
+	croak 'Cleanup timeout must be an integer representing seconds'
+		if defined( $max_requeue_count ) && ( $max_requeue_count !~ m/^\d+$/ );
+	croak 'Lifetime must be an integer representing seconds'
+		if defined( $lifetime ) && ( $lifetime !~ m/^\d+$/ );
+	croak '"max_requeue_count" and "lifetime" cannot be combined, specify one OR the other'
+		if defined( $lifetime ) && defined( $max_requeue_count );
+	croak '"max_requeue_count" or "lifetime" must be specified'
+		if !defined( $lifetime ) && !defined( $max_requeue_count );
+	
+	# Prepare query clauses.
+	my $sql_lifetime = defined( $lifetime )
+		? 'AND created < ' . ( time() - $lifetime )
+		: '';
+	my $sql_max_requeue_count = defined( $max_requeue_count )
+		? 'AND requeue_count >= ' . $dbh->quote( $max_requeue_count )
+		: '';
+	
+	# Purge the queue.
+	my $rows_deleted = $dbh->do(
+		sprintf(
+			q|
+				DELETE
+				FROM %s
+				WHERE queue_id = ?
+					AND lock_time IS NULL
+					%s
+					%s
+			|,
+			$dbh->quote_identifier( $self->get_queue_elements_table_name() ),
+			$sql_lifetime,
+			$sql_max_requeue_count,
+		),
+		{},
+		$self->get_queue_id(),
+	);
+	croak 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
+	
+	carp "Leaving cleanup()." if $verbose;
+	# Account for '0E0' which means no rows affected, and translates into no
+	# rows deleted in our case.
+	return $rows_deleted eq '0E0'
+		? 0
+		: $rows_deleted;
 }
 
 
@@ -882,14 +1024,12 @@ L<http://search.cpan.org/dist/Queue-DBI/>
 =head1 ACKNOWLEDGEMENTS
 
 Thanks to ThinkGeek (L<http://www.thinkgeek.com/>) and its corporate overlords
-at Geeknet (L<http://www.geek.net/>), for footing the bill while I eat pizza
-and write code for them!
+at Geeknet (L<http://www.geek.net/>), for footing the bill while I write code
+for them!
 
 Thanks to Jacob Rose C<< <jacob at thinkgeek.com> >>, who wrote the first
 queueing module at ThinkGeek L<http://www.thinkgeek.com> and whose work
-provided the inspiration to write this full-fledged queueing system. His
-contribution to shaping the original API in version 1.0.0 was also very
-valuable.
+provided the inspiration to write this full-fledged queueing system.
 
 Thanks to Jamie McCarthy for the locking mechanism improvements in version 1.1.0.
 

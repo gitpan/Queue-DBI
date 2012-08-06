@@ -1,12 +1,14 @@
-#!perl
+#!perl -T
 
 use strict;
 use warnings;
 
-use Test::More tests => 45;
+use Test::Exception;
+use Test::More tests => 13;
+
 use DBI;
-use Data::Dumper;
 use Queue::DBI;
+
 
 # Note: the queue object is designed to never backtrack, so we need to re-create
 # the queue object everytime to be able to pick the element we just requeued.
@@ -27,40 +29,34 @@ ok(
 {
 	# Instantiate the queue object.
 	my $queue;
-	eval
-	{
-		$queue = Queue::DBI->new(
-			'queue_name'        => 'test1',
-			'database_handle'   => $dbh,
-			'cleanup_timeout'   => 3600,
-			'verbose'           => 0,
-			'max_requeue_count' => 5,
-		);
-	};
-	ok(
-		!$@,
+	lives_ok(
+		sub
+		{
+			$queue = Queue::DBI->new(
+				'queue_name'        => 'test1',
+				'database_handle'   => $dbh,
+				'cleanup_timeout'   => 3600,
+				'verbose'           => 0,
+				'max_requeue_count' => 5,
+			);
+		},
 		'Create the queue object.',
-	) || diag( "Error: $@ " );
-	ok(
-		defined( $queue ) && $queue->isa( 'Queue::DBI' ),
-		'The queue is a Queue::DBI object.',
-	) || diag( '$queue: ' . ( defined( $queue ) ? 'ref() >' . ref( $queue ) .'<' : 'undef' ) );
+	);
 	
 	# Clean up queue if needed.
 	my $removed_elements = 0;
-	eval
-	{
-		while ( my $queue_element = $queue->next() )
+	lives_ok(
+		sub
 		{
-			$queue_element->lock() || die 'Could not lock the queue element';
-			$queue_element->success() || die 'Could not mark as processed the queue element';
-			$removed_elements++;
-		}
-	};
-	ok(
-		!$@,
-		'Queue is empty',
-	) || diag( "Error: $@ " );
+			while ( my $queue_element = $queue->next() )
+			{
+				$queue_element->lock() || die 'Could not lock the queue element';
+				$queue_element->success() || die 'Could not mark as processed the queue element';
+				$removed_elements++;
+			}
+		},
+		'Queue is empty.',
+	);
 	note( "Removed >$removed_elements< elements." )
 		if $removed_elements != 0;
 	
@@ -71,14 +67,13 @@ ok(
 		block2 => 589793238,
 		block3 => 462643383,
 	};
-	eval
-	{
-		$queue->enqueue( $data );
-	};
-	ok(
-		!$@,
-		'Queue data',
-	) || diag( "Could not enqueue the following data:\n" . Dumper( $data ) );
+	lives_ok(
+		sub
+		{
+			$queue->enqueue( $data );
+		},
+		'Queue data.',
+	);
 }
 
 # Second part: retrieve, lock and requeue the element. The element should not be
@@ -88,106 +83,96 @@ ok(
 # prevents loops and we wouldn't be able to retrieve the element again.
 foreach my $try ( 1..6 )
 {
-	note( "<Round $try>" );
-	
-	# Instantiate the queue object.
-	my $queue;
-	eval
-	{
-		$queue = Queue::DBI->new(
-			'queue_name'        => 'test1',
-			'database_handle'   => $dbh,
-			'cleanup_timeout'   => 3600,
-			'verbose'           => 0,
-			'max_requeue_count' => 5,
-		);
-	};
-	ok(
-		!$@,
-		'Create the queue object.',
-	) || diag( "Error: $@ " );
-	ok(
-		defined( $queue ) && $queue->isa( 'Queue::DBI' ),
-		'The queue is a Queue::DBI object.',
-	) || diag( '$queue: ' . ( defined( $queue ) ? 'ref() >' . ref( $queue ) .'<' : 'undef' ) );
-	
-	# Retrieve element.
-	my $queue_element;
-	eval
-	{
-		$queue_element = $queue->next();
-	};
-	ok(
-		!$@,
-		'Retrieve the next element in the queue.',
-	) || diag( "Error: $@ " );
-	ok(
-		defined( $queue_element ) && $queue_element->isa( 'Queue::DBI::Element' ),
-		'The element is a Queue::DBI::Element object.',
-	) || diag( '$queue: ' . ( defined( $queue_element ) ? 'ref() >' . ref( $queue_element ) .'<' : 'undef' ) );
-	
-	# Lock.
-	eval
-	{
-		$queue_element->lock()
-		||
-		die 'Cannot lock element';
-	};
-	ok(
-		!$@,
-		'Lock element.',
-	) || diag( "Error: $@ " );
-	
-	# Requeue.
-	eval
-	{
-		$queue_element->requeue()
-		||
-		die 'Cannot requeue element';
-	};
-	ok(
-		!$@,
-		'Requeue element.',
-	) || diag( "Error: $@ " );
-	
-	note( "</Round $try>" );
+	subtest(
+		"Round $try.",
+		sub
+		{
+			# Instantiate the queue object.
+			my $queue;
+			lives_ok(
+				sub
+				{
+					$queue = Queue::DBI->new(
+						'queue_name'        => 'test1',
+						'database_handle'   => $dbh,
+						'cleanup_timeout'   => 3600,
+						'verbose'           => 0,
+						'max_requeue_count' => 5,
+					);
+				},
+				'Create the queue object.',
+			);
+			
+			# Retrieve element.
+			my $queue_element;
+			lives_ok(
+				sub
+				{
+					$queue_element = $queue->next();
+				},
+				'Retrieve the next element in the queue.',
+			);
+			isa_ok(
+				$queue_element,
+				'Queue::DBI::Element',
+				'Object returned by next()',
+			);
+			
+			# Lock.
+			lives_ok(
+				sub
+				{
+					$queue_element->lock()
+					||
+					die 'Cannot lock element';
+				},
+				'Lock element.',
+			);
+			
+			# Requeue.
+			lives_ok(
+				sub
+				{
+					$queue_element->requeue()
+					||
+					die 'Cannot requeue element';
+				},
+				'Requeue element.',
+			);
+		}
+	);
 }
 
 # Now, the seventh time we try to retrieve the element, it should not be returned.
 {
 	# Instantiate the queue object.
 	my $queue;
-	eval
-	{
-		$queue = Queue::DBI->new(
-			'queue_name'        => 'test1',
-			'database_handle'   => $dbh,
-			'cleanup_timeout'   => 3600,
-			'verbose'           => 0,
-			'max_requeue_count' => 5,
-		);
-	};
-	ok(
-		!$@,
+	lives_ok(
+		sub
+		{
+			$queue = Queue::DBI->new(
+				'queue_name'        => 'test1',
+				'database_handle'   => $dbh,
+				'cleanup_timeout'   => 3600,
+				'verbose'           => 0,
+				'max_requeue_count' => 5,
+			);
+		},
 		'Create the queue object.',
-	) || diag( "Error: $@ " );
-	ok(
-		defined( $queue ) && $queue->isa( 'Queue::DBI' ),
-		'The queue is a Queue::DBI object.',
-	) || diag( '$queue: ' . ( defined( $queue ) ? 'ref() >' . ref( $queue ) .'<' : 'undef' ) );
+	);
 	
 	# Retrieve element.
 	my $queue_element;
-	eval
-	{
-		$queue_element = $queue->next();
-	};
-	ok(
-		!$@,
-		'Retrieve the next element in the queue',
-	) || diag( "Error: $@ " );
+	lives_ok(
+		sub
+		{
+			$queue_element = $queue->next();
+		},
+		'Retrieve the next element in the queue.',
+	);
 	ok(
 		!defined( $queue_element ),
 		'No element returned.',
-	) || diag( "Queue element returned:\n" . Dumper( $queue_element ) );
+	) || diag( "Queue element returned:\n" . explain( $queue_element ) );
 }
+
