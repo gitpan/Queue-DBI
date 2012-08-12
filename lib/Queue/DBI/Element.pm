@@ -6,6 +6,7 @@ use strict;
 use Data::Dumper;
 use Carp;
 
+
 =head1 NAME
 
 Queue::DBI::Element - An object representing an element pulled from the queue.
@@ -13,11 +14,11 @@ Queue::DBI::Element - An object representing an element pulled from the queue.
 
 =head1 VERSION
 
-Version 1.8.0
+Version 1.8.1
 
 =cut
 
-our $VERSION = '1.8.0';
+our $VERSION = '1.8.1';
 
 
 =head1 SYNOPSIS
@@ -35,6 +36,7 @@ Create a new Queue::DBI::Element object.
 		'data'          => $data,
 		'id'            => $id,
 		'requeue_count' => $requeue_count,
+		'created'       => $created,
 	);
 
 All parameters are mandatory and correspond respectively to the Queue::DBI
@@ -53,7 +55,7 @@ sub new
 	my ( $class, %args ) = @_;
 	
 	# Check parameters
-	foreach my $arg ( qw( data id requeue_count ) )
+	foreach my $arg ( qw( data id requeue_count created ) )
 	{
 		croak "Argument '$arg' is needed to create the Queue::DBI object"
 			if !defined( $args{$arg} ) || ( $args{$arg} eq '' );
@@ -68,6 +70,7 @@ sub new
 			'data'          => $args{'data'},
 			'id'            => $args{'id'},
 			'requeue_count' => $args{'requeue_count'},
+			'created'       => $args{'created'},
 		},
 		$class
 	);
@@ -257,7 +260,7 @@ sub success
 					FROM %s
 					WHERE queue_element_id = ?
 				|,
-				$dbh->quote_identifier( $self->get_queues_table_name() ),
+				$dbh->quote_identifier( $queue->get_queue_elements_table_name() ),
 			),
 			{},
 			$self->id(),
@@ -317,6 +320,8 @@ sub data
 
 Returns the number of times that the current element has been requeued.
 
+	my $requeue_count = $element->requeue_count();
+
 =cut
 
 sub requeue_count
@@ -325,6 +330,7 @@ sub requeue_count
 	
 	return $self->{'requeue_count'};
 }
+
 
 =head2 id()
 
@@ -342,11 +348,55 @@ sub id
 }
 
 
+=head2 get_created_time()
+
+Returns the unixtime at which the element was originally created.
+
+	my $created = $element->get_created_time();
+
+=cut
+
+sub get_created_time
+{
+	my ( $self ) = @_;
+	
+	return $self->{'created'};
+}
+
+
+=head2 is_over_lifetime()
+
+Returns a boolean indicating whether the current element is over the lifetime
+specified when instanciating the queue. This is especially helpful if you
+retrieve a large batch of elements and do long processing operations on each
+of them.
+
+	my $is_over_lifetime = $element->is_over_lifetime();
+
+=cut
+
+sub is_over_lifetime
+{
+	my ( $self ) = @_;
+	my $queue = $self->queue();
+	my $lifetime = $queue->lifetime();
+	
+	# If the queue doesn't a lifetime, an element will never "expire".
+	return 0 if !defined( $lifetime );
+	
+	# Check the time the element was created.
+	my $created_time = $self->get_created_time();
+	return time() - $created_time > $lifetime;
+}
+
+
 =head1 INTERNAL METHODS
 
 =head2 queue()
 
 Returns the Queue::DBI object used to pull the current element.
+
+	my $queue = $element->queue();
 
 =cut
 

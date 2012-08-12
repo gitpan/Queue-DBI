@@ -18,11 +18,11 @@ Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storag
 
 =head1 VERSION
 
-Version 1.8.0
+Version 1.8.1
 
 =cut
 
-our $VERSION = '1.8.0';
+our $VERSION = '1.8.1';
 
 our $UNLIMITED_RETRIES = -1;
 
@@ -114,7 +114,7 @@ Mandatory, the name of the queue elements will be added to / removed from.
 
 =item * 'database handle'
 
-Mandatory, a DBI / DBD::Mysql object.
+Mandatory, a DBI object.
 
 =item * 'cleanup_timeout'
 
@@ -288,7 +288,9 @@ sub lifetime
 		}
 	}
 	
-	return $self->{'lifetime'};
+	return $self->{'lifetime'} eq $IMMORTAL_LIFE
+		? undef
+		: $self->{'lifetime'};
 }
 
 
@@ -326,7 +328,9 @@ sub max_requeue_count
 		}
 	}
 	
-	return $self->{'max_requeue_count'};
+	return $self->{'max_requeue_count'} == $UNLIMITED_RETRIES
+		? undef
+		: $self->{'max_requeue_count'};
 }
 
 
@@ -613,6 +617,7 @@ sub retrieve_batch
 				'data'          => Storable::thaw( MIME::Base64::decode_base64( $row->[1] ) ),
 				'id'            => $row->[0],
 				'requeue_count' => $row->[2],
+				'created'       => $row->[3],
 			)
 		);
 	}
@@ -679,6 +684,7 @@ sub get_element_by_id
 		'data'          => Storable::thaw( MIME::Base64::decode_base64( $data->{'data'} ) ),
 		'id'            => $data->{'queue_element_id'},
 		'requeue_count' => $data->{'requeue_count'},
+		'created'       => $data->{'created'},
 	);
 	
 	carp "Leaving get_element_by_id()." if $verbose;
@@ -761,7 +767,7 @@ sub cleanup
 Remove (permanently, caveat emptor!) queue elements based on how many times
 they've been requeued or how old they are.
 
-	# Remove permanently elements that have been requeued 10 times or more.
+	# Remove permanently elements that have been requeued more than 10 times.
 	$queue->purge( max_requeue_count => 10 );
 	
 	# Remove permanently elements that were created over an hour ago.
@@ -800,7 +806,7 @@ sub purge
 		? 'AND created < ' . ( time() - $lifetime )
 		: '';
 	my $sql_max_requeue_count = defined( $max_requeue_count )
-		? 'AND requeue_count >= ' . $dbh->quote( $max_requeue_count )
+		? 'AND requeue_count > ' . $dbh->quote( $max_requeue_count )
 		: '';
 	
 	# Purge the queue.
