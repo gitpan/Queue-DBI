@@ -18,15 +18,11 @@ Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storag
 
 =head1 VERSION
 
-Version 1.8.1
+Version 1.8.2
 
 =cut
 
-our $VERSION = '1.8.1';
-
-our $UNLIMITED_RETRIES = -1;
-
-our $IMMORTAL_LIFE = -1;
+our $VERSION = '1.8.2';
 
 our $DEFAULT_QUEUES_TABLE_NAME = 'queues';
 
@@ -124,7 +120,9 @@ that time.
 
 =item * 'verbose'
 
-Optional, see verbose() for options.
+Optional, control the verbosity of the warnings in the code. 0 will not display
+any warning; 1 will only give one line warnings about the current operation;
+2 will also usually output the SQL queries performed.
 
 =item * 'max_requeue_count'
 
@@ -181,7 +179,6 @@ sub new
 				'queues'         => $args{'queues_table_name'},
 				'queue_elements' => $args{'queue_elements_table_name'},
 			},
-			'verbose'     => 0,
 		},
 		$class
 	);
@@ -203,134 +200,16 @@ sub new
 		unless defined( $queue[0] ) && ( $queue[0] =~ m/^\d+$/ );
 	$self->{'queue_id'} = $queue[0];
 	
-	$self->verbose( $args{'verbose'} )
-		if defined( $args{'verbose'} );
+	# Set optional parameters.
+	$self->set_verbose( $args{'verbose'} );
+	$self->set_max_requeue_count( $args{'max_requeue_count'} );
+	$self->set_lifetime( $args{'lifetime'} );
 	
-	$self->max_requeue_count(
-		defined( $args{'max_requeue_count'} )
-			? $args{'max_requeue_count'}
-			: $Queue::DBI::UNLIMITED_RETRIES
-	);
-	
-	$self->lifetime(
-		defined( $args{'lifetime'} )
-			? $args{'lifetime'}
-			: $Queue::DBI::IMMORTAL_LIFE
-	);
-	
+	# Perform queue cleanup if a timeout is specified.
 	$self->cleanup( $args{'cleanup_timeout'} )
 		if defined( $args{'cleanup_timeout'} );
 	
 	return $self;
-}
-
-
-=head2 verbose()
-
-Control the verbosity of the warnings in the code.
-
-	$queue->verbose(1); # turn on verbose information
-	
-	$queue->verbose(2); # be extra verbose
-	
-	$queue->verbose(0); # quiet now!
-	
-	warn 'Verbose' if $queue->verbose(); # getter-style
-	
-	warn 'Very verbose' if $queue->verbose() > 1;
-	
-0 will not display any warning, 1 will only give one line warnings about the
-current operation and 2 will also usually output the SQL queries performed.
-
-=cut
-
-sub verbose
-{
-	my ( $self, $verbose ) = @_;
-	
-	$self->{'verbose'} = ( $verbose || 0 )
-		if defined( $verbose );
-	
-	return $self->{'verbose'};
-}
-
-
-=head2 lifetime()
-
-Sets how old an element can be before it is ignored when retrieving elements.
-Set it to $Queue::DBI::IMMORTAL_LIFE to reset Queue::DBI back to its default
-behavior of retrieving elements without time limit.
-
-	# Don't pull queue elements that are more than an hour old.
-	$queue->lifetime( 3600 );
-	
-	# Keep pulling queue elements regardless of how old they are.
-	$queue->lifetime( $Queue::DBI::IMMORTAL_LIFE );
-	
-	# Find how old an element can be before the queue will stop retrieving it.
-	my $lifetime = $queue->lifetime();
-
-=cut
-
-sub lifetime
-{
-	my ( $self, $lifetime ) = @_;
-	
-	if ( defined( $lifetime ) )
-	{
-		if ( ( $lifetime =~ m/^\d+$/ ) || ( $lifetime eq $IMMORTAL_LIFE ) )
-		{
-			$self->{'lifetime'} = $lifetime;
-		}
-		else
-		{
-			croak 'lifetime must be an integer or $Queue::DBI::IMMORTAL_LIFE';
-		}
-	}
-	
-	return $self->{'lifetime'} eq $IMMORTAL_LIFE
-		? undef
-		: $self->{'lifetime'};
-}
-
-
-=head2 max_requeue_count()
-
-Sets the number of time an element can be requeued before it is ignored when
-retrieving elements. Set it to $Queue::DBI::UNLIMITED_RETRIES to reset
-Queue::DBI back to its default behavior of re-pulling elements without limit.
-
-	# Don't keep pulling the element if it has been requeued more than 5 times.
-	$queue->max_requeue_count( 5 );
-	
-	# Keep pulling elements regardless of the number of times they have been
-	# requeued.
-	$queue->max_requeue_count( $UNLIMITED_RETRIES );
-	
-	# Find how many times a queue object will try to requeue.
-	my $max_requeue_count = $queue->max_requeue_count();
-
-=cut
-
-sub max_requeue_count
-{
-	my ( $self, $max_requeue_count ) = @_;
-	
-	if ( defined( $max_requeue_count ) )
-	{
-		if ( ( $max_requeue_count =~ m/^\d+$/ ) || ( $max_requeue_count eq $UNLIMITED_RETRIES ) )
-		{
-			$self->{'max_requeue_count'} = $max_requeue_count;
-		}
-		else
-		{
-			croak 'max_requeue_count must be an integer or $Queue::DBI::UNLIMITED_RETRIES';
-		}
-	}
-	
-	return $self->{'max_requeue_count'} == $UNLIMITED_RETRIES
-		? undef
-		: $self->{'max_requeue_count'};
 }
 
 
@@ -359,7 +238,7 @@ Returns the number of elements in the queue.
 sub count
 {
 	my ( $self ) = @_;
-	my $verbose = $self->verbose();
+	my $verbose = $self->get_verbose();
 	my $dbh = $self->get_dbh();
 	carp "Entering count()." if $verbose;
 	
@@ -399,7 +278,7 @@ as it is serialized for storage in the database.
 sub enqueue
 {
 	my ( $self, $data ) = @_;
-	my $verbose = $self->verbose();
+	my $verbose = $self->get_verbose();
 	my $dbh = $self->get_dbh();
 	carp "Entering enqueue()." if $verbose;
 	carp "Data is: " . Dumper( $data ) if $verbose > 1;
@@ -460,7 +339,7 @@ elements can be specified using 'search_in_ids':
 sub next ## no critic (Subroutines::ProhibitBuiltinHomonyms)
 {
 	my ( $self, %args ) = @_;
-	my $verbose = $self->verbose();
+	my $verbose = $self->get_verbose();
 	carp "Entering next()." if $verbose;
 	
 	my $elements = $self->retrieve_batch(
@@ -506,7 +385,7 @@ elements can be specified using 'search_in_ids':
 sub retrieve_batch
 {
 	my ( $self, $number_of_elements_to_retrieve, %args ) = @_;
-	my $verbose = $self->verbose();
+	my $verbose = $self->get_verbose();
 	my $dbh = $self->get_dbh();
 	carp "Entering retrieve_batch()." if $verbose;
 	
@@ -554,14 +433,14 @@ sub retrieve_batch
 	}
 	
 	# Make sure we don't use requeued elements more times than specified.
-	my $max_requeue_count = $self->max_requeue_count();
-	my $sql_max_requeue_count = defined( $max_requeue_count ) && ( $max_requeue_count != $UNLIMITED_RETRIES )
+	my $max_requeue_count = $self->get_max_requeue_count();
+	my $sql_max_requeue_count = defined( $max_requeue_count )
 		? 'AND requeue_count <= ' . $dbh->quote( $max_requeue_count )
 		: '';
 	
 	# Make sure we don't use elements that exceed the specified lifetime.
-	my $lifetime = $self->lifetime();
-	my $sql_lifetime = defined( $lifetime ) && ( $lifetime != $IMMORTAL_LIFE )
+	my $lifetime = $self->get_lifetime();
+	my $sql_lifetime = defined( $lifetime )
 		? 'AND created >= ' . ( time() - $lifetime )
 		: '';
 	
@@ -647,7 +526,7 @@ This method requires a queue element ID to be passed as parameter.
 sub get_element_by_id
 {
 	my ( $self, $queue_element_id ) = @_;
-	my $verbose = $self->verbose();
+	my $verbose = $self->get_verbose();
 	my $dbh = $self->get_dbh();
 	carp "Entering get_element_by_id()." if $verbose;
 	
@@ -710,7 +589,7 @@ Returns the items requeued so that a specific action can be taken on them.
 sub cleanup
 {
 	my ( $self, $time_in_seconds ) = @_;
-	my $verbose = $self->verbose();
+	my $verbose = $self->get_verbose();
 	my $dbh = $self->get_dbh();
 	carp "Entering cleanup()." if $verbose;
 	
@@ -784,7 +663,7 @@ Also note that I<max_requeue_count> and I<lifetime> cannot be combined.
 sub purge
 {
 	my ( $self, %args ) = @_;
-	my $verbose = $self->verbose();
+	my $verbose = $self->get_verbose();
 	my $dbh = $self->get_dbh();
 	carp "Entering cleanup()." if $verbose;
 	
@@ -931,6 +810,187 @@ sub create_tables
 }
 
 
+=head1 ACCESSORS
+
+=head2 get_max_requeue_count()
+
+Return how many times an element can be requeued before it is ignored when
+retrieving elements.
+
+	my $max_requeue_count = $queue->get_max_requeue_count();
+
+=cut
+
+sub get_max_requeue_count
+{
+	my ( $self ) = @_;
+	
+	return $self->{'max_requeue_count'};
+}
+
+
+=head2 set_max_requeue_count()
+
+Set the number of time an element can be requeued before it is ignored when
+retrieving elements. Set it to C<undef> to disable the limit.
+
+	# Don't keep pulling the element if it has been requeued more than 5 times.
+	$queue->set_max_requeue_count( 5 );+
+	
+	# Retry without limit.
+	$queue->set_max_requeue_count( undef );
+
+=cut
+
+sub set_max_requeue_count
+{
+	my ( $self, $max_requeue_count ) = @_;
+	
+	croak 'max_requeue_count must be an integer or undef'
+		if defined( $max_requeue_count ) && ( $max_requeue_count !~ /^\d+$/ );
+	
+	$self->{'max_requeue_count'} = $max_requeue_count;
+	
+	return;
+}
+
+
+=head2 get_lifetime()
+
+Return how old an element can be before it is ignored when retrieving elements.
+
+	# Find how old an element can be before the queue will stop retrieving it.
+	my $lifetime = $queue->get_lifetime();
+
+=cut
+
+sub get_lifetime
+{
+	my ( $self ) = @_;
+	
+	return $self->{'lifetime'};
+}
+
+
+=head2 set_lifetime()
+
+Set how old an element can be before it is ignored when retrieving elements.
+
+Set it to C<undef> to reset Queue::DBI back to its default behavior of
+retrieving elements without time limit.
+
+	# Don't pull queue elements that are more than an hour old.
+	$queue->set_lifetime( 3600 );
+	
+	# Pull elements without time limit.
+	$queue->set_lifetime( undef );
+
+=cut
+
+sub set_lifetime
+{
+	my ( $self, $lifetime ) = @_;
+	
+	croak 'lifetime must be an integer or undef'
+		if defined( $lifetime ) && ( $lifetime !~ /^\d+$/ );
+	
+	$self->{'lifetime'} = $lifetime;
+	
+	return;
+}
+
+
+=head2 get_verbose()
+
+Return the verbosity level, which is used in the module to determine when and
+what type of debugging statements / information should be warned out.
+
+See C<set_verbose()> for the possible values this function can return.
+
+	warn 'Verbose' if $queue->get_verbose();
+	
+	warn 'Very verbose' if $queue->get_verbose() > 1;
+
+=cut
+
+sub get_verbose
+{
+	my ( $self ) = @_;
+	
+	return $self->{'verbose'};
+}
+
+
+=head2 set_verbose()
+
+Control the verbosity of the warnings in the code:
+
+=over 4
+
+=item * 0 will not display any warning;
+
+=item * 1 will only give one line warnings about the current operation;
+
+=item * 2 will also usually output the SQL queries performed.
+
+=back
+
+	$queue->set_verbose(1); # turn on verbose information
+	
+	$queue->set_verbose(2); # be extra verbose
+	
+	$queue->set_verbose(0); # quiet now!
+
+=cut
+
+sub set_verbose
+{
+	my ( $self, $verbose ) = @_;
+	
+	$self->{'verbose'} = ( $verbose || 0 );
+	
+	return;
+}
+
+
+=head1 DEPRECATED METHODS
+
+=head2 lifetime()
+
+Please use C<get_lifetime()> and C<set_lifetime()> instead.
+
+=cut
+
+sub lifetime
+{
+	croak 'lifetime() has been deprecated, please use get_lifetime() / set_lifetime() instead.';
+}
+
+
+=head2 verbose()
+
+Please use C<get_verbose()> and C<set_verbose()> instead.
+
+=cut
+
+sub verbose
+{
+	croak 'verbose() has been deprecated, please use get_verbose() / set_verbose() instead.';
+}
+
+
+=head2 max_requeue_count()
+
+Please use C<get_max_requeue_count()> and C<set_max_requeue_count()> instead.
+
+=cut
+
+sub max_requeue_count
+{
+	croak 'max_requeue_count() has been deprecated, please use get_max_requeue_count() / set_max_requeue_count() instead.';
+}
+
+
 =head1 INTERNAL METHODS
 
 =head2 get_dbh()
@@ -1038,6 +1098,9 @@ queueing module at ThinkGeek L<http://www.thinkgeek.com> and whose work
 provided the inspiration to write this full-fledged queueing system.
 
 Thanks to Jamie McCarthy for the locking mechanism improvements in version 1.1.0.
+
+Thanks to Sergey Bond for suggesting many features added in version 1.8.x
+(lifetime constraint, purge() function, get/set functions cleanup).
 
 
 =head1 COPYRIGHT & LICENSE

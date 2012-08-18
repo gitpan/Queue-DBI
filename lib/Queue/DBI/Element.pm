@@ -14,11 +14,11 @@ Queue::DBI::Element - An object representing an element pulled from the queue.
 
 =head1 VERSION
 
-Version 1.8.1
+Version 1.8.2
 
 =cut
 
-our $VERSION = '1.8.1';
+our $VERSION = '1.8.2';
 
 
 =head1 SYNOPSIS
@@ -98,8 +98,8 @@ of it
 sub lock ## no critic (Subroutines::ProhibitBuiltinHomonyms)
 {
 	my ( $self ) = @_;
-	my $queue = $self->queue();
-	my $verbose = $queue->verbose();
+	my $queue = $self->get_queue();
+	my $verbose = $queue->get_verbose();
 	my $dbh = $queue->get_dbh();
 	carp "Entering lock()." if $verbose;
 	
@@ -144,8 +144,8 @@ In case the processing of an element has failed
 sub requeue
 {
 	my ( $self ) = @_;
-	my $queue = $self->queue();
-	my $verbose = $queue->verbose();
+	my $queue = $self->get_queue();
+	my $verbose = $queue->get_verbose();
 	my $dbh = $queue->get_dbh();
 	carp "Entering requeue()." if $verbose;
 	
@@ -213,8 +213,8 @@ completed.
 sub success
 {
 	my ( $self ) = @_;
-	my $queue = $self->queue();
-	my $verbose = $queue->verbose();
+	my $queue = $self->get_queue();
+	my $verbose = $queue->get_verbose();
 	my $dbh = $queue->get_dbh();
 	carp "Entering success()." if $verbose;
 	
@@ -378,8 +378,8 @@ of them.
 sub is_over_lifetime
 {
 	my ( $self ) = @_;
-	my $queue = $self->queue();
-	my $lifetime = $queue->lifetime();
+	my $queue = $self->get_queue();
+	my $lifetime = $queue->get_lifetime();
 	
 	# If the queue doesn't a lifetime, an element will never "expire".
 	return 0 if !defined( $lifetime );
@@ -392,15 +392,15 @@ sub is_over_lifetime
 
 =head1 INTERNAL METHODS
 
-=head2 queue()
+=head2 get_queue()
 
 Returns the Queue::DBI object used to pull the current element.
 
-	my $queue = $element->queue();
+	my $queue = $element->get_queue();
 
 =cut
 
-sub queue
+sub get_queue
 {
 	my ( $self ) = @_;
 	
@@ -461,6 +461,9 @@ queueing module at ThinkGeek L<http://www.thinkgeek.com> and whose work
 provided the inspiration to write this full-fledged queueing system.
 
 Thanks to Jamie McCarthy for the locking mechanism improvements in version 1.1.0.
+
+Thanks to Sergey Bond for suggesting many features added in version 1.8.x
+(lifetime constraint, purge() function, get/set functions cleanup).
 
 
 =head1 COPYRIGHT & LICENSE
