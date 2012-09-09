@@ -4,9 +4,9 @@
       "Guillaume Aubert <aubertg@cpan.org>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.4, CPAN::Meta::Converter version 2.120530",
+   "generated_by" : "Module::Build version 0.4003, CPAN::Meta::Converter version 2.120921",
    "license" : [
-      "artistic_1"
+      "open_source"
    ],
    "meta-spec" : {
       "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
@@ -42,15 +42,15 @@
    "provides" : {
       "Queue::DBI" : {
          "file" : "lib/Queue/DBI.pm",
-         "version" : "v2.0.2"
+         "version" : "v2.1.0"
       },
       "Queue::DBI::Admin" : {
          "file" : "lib/Queue/DBI/Admin.pm",
-         "version" : "v2.0.2"
+         "version" : "v2.1.0"
       },
       "Queue::DBI::Element" : {
          "file" : "lib/Queue/DBI/Element.pm",
-         "version" : "v2.0.2"
+         "version" : "v2.1.0"
       }
    },
    "release_status" : "stable",
@@ -60,11 +60,11 @@
       },
       "homepage" : "https://metacpan.org/release/Queue-DBI",
       "license" : [
-         "http://www.perlfoundation.org/artistic_license_1_0"
+         "http://www.gnu.org/licenses/gpl-3.0.txt"
       ],
       "repository" : {
          "url" : "https://sourceforge.net/p/queuedbiperl/code"
       }
    },
-   "version" : "v2.0.2"
+   "version" : "v2.1.0"
 }
