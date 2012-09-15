@@ -18,11 +18,11 @@ Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storag
 
 =head1 VERSION
 
-Version 2.1.0
+Version 2.1.1
 
 =cut
 
-our $VERSION = '2.1.0';
+our $VERSION = '2.1.1';
 
 our $DEFAULT_QUEUES_TABLE_NAME = 'queues';
 
@@ -602,7 +602,7 @@ sub cleanup
 	my $rows = $dbh->selectall_arrayref(
 		sprintf(
 			q|
-				SELECT queue_element_id, data, requeue_count
+				SELECT queue_element_id, data, requeue_count, created
 				FROM %s
 				WHERE queue_id = ?
 					AND lock_time < ?
@@ -627,6 +627,7 @@ sub cleanup
 			'data'          => Storable::thaw( MIME::Base64::decode_base64( $row->[1] ) ),
 			'id'            => $row->[0],
 			'requeue_count' => $row->[2],
+			'created'       => $row->[3],
 		);
 		# If this item was requeued by another process since its
 		# being SELECTed a moment ago, requeue() will return failure
