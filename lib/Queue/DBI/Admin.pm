@@ -18,11 +18,11 @@ Queue::DBI::Admin - Manage Queue::DBI queues.
 
 =head1 VERSION
 
-Version 2.1.1
+Version 2.2.0
 
 =cut
 
-our $VERSION = '2.1.1';
+our $VERSION = '2.2.0';
 
 
 =head1 SYNOPSIS
@@ -51,6 +51,22 @@ our $VERSION = '2.1.1';
 	
 	# Delete a queue.
 	$queues_admin->delete_queue( $queue_name );
+
+
+=head1 SUPPORTED DATABASES
+
+This distribution currently supports:
+
+=over 4
+
+=item * SQLite
+
+=item * MySQL
+
+=back
+
+Please contact me if you need support for another database type, I'm always
+glad to add extensions if you can help me with testing.
 
 
 =head1 METHODS
@@ -128,12 +144,10 @@ Create the tables required by Queue::DBI to store the queues and data.
 
 	$queues_admin->create_tables(
 		drop_if_exist => $boolean,
-		sqlite        => $boolean,
 	);
 
 By default, it won't drop any table but you can force that by setting
-'drop_if_exist' to 1. 'sqlite' is also set to 0 by default, as this parameter
-is used only for testing.
+'drop_if_exist' to 1.
 
 =cut
 
@@ -141,98 +155,139 @@ sub create_tables
 {
 	my ( $self, %args ) = @_;
 	my $drop_if_exist = delete( $args{'drop_if_exist'} ) || 0;
-	my $sqlite = delete( $args{'sqlite'} ) || 0;
 	croak 'Unrecognized arguments: ' . join( ', ', keys %args )
 		if scalar( keys %args ) != 0;
 	
+	# Check the database type.
 	my $database_handle = $self->get_database_handle();
+	my $database_type = $database_handle->{'Driver'}->{'Name'} || '';
+	croak "This database type ($database_type) is not supported yet, please email the maintainer of the module for help"
+		if $database_type !~ m/^(?:SQLite|MySQL)$/i;
+	
+	# Prepare the name of the tables.
+	my $queues_table_name = $self->get_queues_table_name();
+	my $quoted_queues_table_name = $database_handle->quote_identifier(
+		$queues_table_name
+	);
+	
+	my $queue_elements_table_name = $self->get_queue_elements_table_name();
+	my $quoted_queue_elements_table_name = $database_handle->quote_identifier(
+		$queue_elements_table_name
+	);
+	
+	# Drop the tables, if requested.
+	# Note: due to foreign key constraints, we need to drop the tables in the
+	# reverse order in which they are created.
+	if ( $drop_if_exist )
+	{
+		$database_handle->do(
+			sprintf(
+				q|DROP TABLE IF EXISTS %s|,
+				$quoted_queue_elements_table_name,
+			)
+		);
+		
+		$database_handle->do(
+			sprintf(
+				q|DROP TABLE IF EXISTS %s|,
+				$quoted_queues_table_name,
+			)
+		);
+	}
 	
 	# Create the list of queues.
-	my $queues_table_name = $database_handle->quote_identifier(
-		$self->get_queues_table_name()
-	);
-	
-	if ( $drop_if_exist )
+	if ( $database_type eq 'SQLite' )
 	{
 		$database_handle->do(
 			sprintf(
-				q|DROP TABLE IF EXISTS %s|,
-				$queues_table_name,
+				q|
+					CREATE TABLE %s
+					(
+						queue_id INTEGER PRIMARY KEY AUTOINCREMENT,
+						name VARCHAR(255) NOT NULL UNIQUE
+					)
+				|,
+				$quoted_queues_table_name,
 			)
 		);
 	}
-	
-	$database_handle->do(
-		sprintf(
-			$sqlite
-				? q|
+	else
+	{
+		my $unique_index_name = $database_handle->quote_identifier(
+			'unq_' . $queues_table_name . '_name',
+		);
+		
+		$database_handle->do(
+			sprintf(
+				q|
 					CREATE TABLE %s
 					(
-						`queue_id` INTEGER PRIMARY KEY AUTOINCREMENT,
-						`name` VARCHAR(255) NOT NULL UNIQUE
-					)
-				|
-				: q|
-					CREATE TABLE %s
-					(
-						`queue_id` INT(11) NOT NULL AUTO_INCREMENT,
-						`name` VARCHAR(255) NOT NULL,
-						PRIMARY KEY (`queue_id`),
-						UNIQUE KEY `name` (`name`)
+						queue_id INT(11) NOT NULL AUTO_INCREMENT,
+						name VARCHAR(255) NOT NULL,
+						PRIMARY KEY (queue_id),
+						UNIQUE KEY %s (name)
 					)
 					ENGINE=InnoDB
 				|,
-			$queues_table_name,
-		)
-	);
+				$quoted_queues_table_name,
+				$unique_index_name,
+			)
+		);
+	}
 	
 	# Create the table that will hold the queue elements.
-	my $queue_elements_table_name = $database_handle->quote_identifier(
-		$self->get_queue_elements_table_name()
-	);
-	
-	if ( $drop_if_exist )
+	if ( $database_type eq 'SQLite' )
 	{
 		$database_handle->do(
 			sprintf(
-				q|DROP TABLE IF EXISTS %s|,
-				$queue_elements_table_name,
+				q|
+					CREATE TABLE %s
+					(
+						queue_element_id INTEGER PRIMARY KEY AUTOINCREMENT,
+						queue_id INTEGER NOT NULL,
+						data TEXT,
+						lock_time INT(10) DEFAULT NULL,
+						requeue_count INT(3) DEFAULT '0',
+						created INT(10) NOT NULL DEFAULT '0'
+					)
+				|,
+				$quoted_queue_elements_table_name,
 			)
 		);
 	}
-	
-	$database_handle->do(
-		sprintf(
-			$sqlite
-				? q|
+	else
+	{
+		my $queue_id_index_name = $database_handle->quote_identifier(
+			'idx_' . $queue_elements_table_name . '_queue_id'
+		);
+		my $queue_id_foreign_key_name = $database_handle->quote_identifier(
+			'fk_' . $queue_elements_table_name . '_queue_id'
+		);
+		
+		$database_handle->do(
+			sprintf(
+				q|
 					CREATE TABLE %s
 					(
-						`queue_element_id` INTEGER PRIMARY KEY AUTOINCREMENT,
-						`queue_id` INTEGER NOT NULL,
-						`data` TEXT,
-						`lock_time` INT(10) DEFAULT NULL,
-						`requeue_count` INT(3) DEFAULT '0',
-						`created` INT(10) NOT NULL DEFAULT '0'
-					)
-				|
-				: q|
-					CREATE TABLE %s
-					(
-						`queue_element_id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-						`queue_id` INT(11) NOT NULL,
-						`data` TEXT,
-						`lock_time` INT(10) UNSIGNED DEFAULT NULL,
-						`requeue_count` INT(3) UNSIGNED DEFAULT '0',
-						`created` INT(10) UNSIGNED NOT NULL DEFAULT '0',
-						PRIMARY KEY (`queue_element_id`),
-						KEY `idx_fk_queue_id` (`queue_id`),
-						CONSTRAINT `queue_element_ibfk_1` FOREIGN KEY (`queue_id`) REFERENCES `queues` (`queue_id`)
+						queue_element_id INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+						queue_id INT(11) NOT NULL,
+						data TEXT,
+						lock_time INT(10) UNSIGNED DEFAULT NULL,
+						requeue_count INT(3) UNSIGNED DEFAULT '0',
+						created INT(10) UNSIGNED NOT NULL DEFAULT '0',
+						PRIMARY KEY (queue_element_id),
+						KEY %s (queue_id),
+						CONSTRAINT %s FOREIGN KEY (queue_id) REFERENCES %s (queue_id)
 					)
 					ENGINE=InnoDB
 				|,
-			$queue_elements_table_name,
-		)
-	);
+				$quoted_queue_elements_table_name,
+				$queue_id_index_name,
+				$queue_id_foreign_key_name,
+				$quoted_queues_table_name,
+			)
+		);
+	}
 	
 	return;
 }

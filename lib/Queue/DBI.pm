@@ -18,11 +18,11 @@ Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storag
 
 =head1 VERSION
 
-Version 2.1.1
+Version 2.2.0
 
 =cut
 
-our $VERSION = '2.1.1';
+our $VERSION = '2.2.0';
 
 our $DEFAULT_QUEUES_TABLE_NAME = 'queues';
 
@@ -73,6 +73,22 @@ mechanism without having to use transactions.
 	
 	# Requeue items that have been locked for more than 6 hours
 	$queue->cleanup( 6 * 3600 );
+
+
+=head1 SUPPORTED DATABASES
+
+This distribution currently supports:
+
+=over 4
+
+=item * SQLite
+
+=item * MySQL
+
+=back
+
+Please contact me if you need support for another database type, I'm always
+glad to add extensions if you can help me with testing.
 
 
 =head1 METHODS
@@ -672,9 +688,9 @@ sub purge
 	my $lifetime = $args{'lifetime'};
 	
 	# Check parameters.
-	croak 'Cleanup timeout must be an integer representing seconds'
+	croak '"max_requeue_count" must be an integer'
 		if defined( $max_requeue_count ) && ( $max_requeue_count !~ m/^\d+$/ );
-	croak 'Lifetime must be an integer representing seconds'
+	croak '"lifetime" must be an integer representing seconds'
 		if defined( $lifetime ) && ( $lifetime !~ m/^\d+$/ );
 	croak '"max_requeue_count" and "lifetime" cannot be combined, specify one OR the other'
 		if defined( $lifetime ) && defined( $max_requeue_count );
@@ -881,7 +897,6 @@ function:
 	# Create the tables required by Queue::DBI to store the queues and data.
 	$queues_admin->create_tables(
 		drop_if_exist => $boolean,
-		sqlite        => $boolean,
 	);
 
 =cut
