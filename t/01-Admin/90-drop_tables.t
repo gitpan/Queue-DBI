@@ -24,14 +24,14 @@ ok(
 
 can_ok(
 	'Queue::DBI::Admin',
-	'create_tables',
+	'drop_tables',
 );
 
 subtest(
-	'Create default tables.',
+	'Check default tables.',
 	sub
 	{
-		plan( tests => 2 );
+		plan( tests => 4 );
 		
 		my $queue_admin;
 		lives_ok(
@@ -47,18 +47,32 @@ subtest(
 		lives_ok(
 			sub
 			{
-				$queue_admin->create_tables();
+				$queue_admin->drop_tables();
 			},
-			'Create the default tables.',
+			'Drop the default tables.',
+		);
+		
+		my ( $tables_exist, $missing_tables ) = $queue_admin->has_tables();
+		ok(
+			!$tables_exist,
+			'The default tables do not exist anymore.',
+		);
+		is_deeply(
+			$missing_tables,
+			[
+				$Queue::DBI::DEFAULT_QUEUES_TABLE_NAME,
+				$Queue::DBI::DEFAULT_QUEUE_ELEMENTS_TABLE_NAME,
+			],
+			'The list of missing tables is complete.',
 		);
 	}
 );
 
 subtest(
-	'Create custom tables.',
+	'Check custom tables.',
 	sub
 	{
-		plan( tests => 2 );
+		plan( tests => 4 );
 		
 		my $queue_admin;
 		lives_ok(
@@ -76,9 +90,25 @@ subtest(
 		lives_ok(
 			sub
 			{
-				$queue_admin->create_tables();
+				$queue_admin->drop_tables();
 			},
-			'Create the custom tables.',
+			'Drop the custom tables.',
+		);
+		
+		my ( $tables_exist, $missing_tables ) = $queue_admin->has_tables();
+		ok(
+			!$tables_exist,
+			'The custom tables do not exist anymore.',
+		);
+		is_deeply(
+			$missing_tables,
+			[
+				'test_queues',
+				'test_queue_elements',
+			],
+			'The list of missing tables is complete.',
 		);
 	}
 );
+
+

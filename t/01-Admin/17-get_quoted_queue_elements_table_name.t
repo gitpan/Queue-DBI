@@ -25,7 +25,7 @@ ok(
 
 can_ok(
 	'Queue::DBI::Admin',
-	'get_queue_elements_table_name',
+	'get_quoted_queue_elements_table_name',
 );
 
 subtest(
@@ -46,9 +46,9 @@ subtest(
 		);
 		
 		is(
-			$queue_admin->get_queue_elements_table_name(),
-			$Queue::DBI::DEFAULT_QUEUE_ELEMENTS_TABLE_NAME,
-			'The method get_queue_elements_table_name() returns the default queue elements table name.',
+			$queue_admin->get_quoted_queue_elements_table_name(),
+			$dbh->quote_identifier( $Queue::DBI::DEFAULT_QUEUE_ELEMENTS_TABLE_NAME ),
+			'The method get_quoted_queue_elements_table_name() returns the default queue elements table name (quoted).',
 		);
 	}
 );
@@ -72,9 +72,9 @@ subtest(
 		);
 		
 		is(
-			$queue_admin->get_queue_elements_table_name(),
-			'test_queue_elements',
-			'The method get_queue_elements_table_name() returns the queue elements table name passed to new().',
+			$queue_admin->get_quoted_queue_elements_table_name(),
+			$dbh->quote_identifier( 'test_queue_elements' ),
+			'The method get_quoted_queue_elements_table_name() returns the queue elements table name passed to new() (quoted).',
 		);
 	}
 );

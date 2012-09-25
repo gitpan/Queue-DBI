@@ -18,11 +18,11 @@ Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storag
 
 =head1 VERSION
 
-Version 2.2.1
+Version 2.3.0
 
 =cut
 
-our $VERSION = '2.2.1';
+our $VERSION = '2.3.0';
 
 our $DEFAULT_QUEUES_TABLE_NAME = 'queues';
 
@@ -661,13 +661,14 @@ sub cleanup
 =head2 purge()
 
 Remove (permanently, caveat emptor!) queue elements based on how many times
-they've been requeued or how old they are.
+they've been requeued or how old they are, and return the number of elements
+deleted.
 
 	# Remove permanently elements that have been requeued more than 10 times.
-	$queue->purge( max_requeue_count => 10 );
+	my $deleted_elements_count = $queue->purge( max_requeue_count => 10 );
 	
 	# Remove permanently elements that were created over an hour ago.
-	$queue->purge( lifetime => 3600 );
+	my $deleted_elements_count = $queue->purge( lifetime => 3600 );
 
 Important: locked elements are not purged even if they match the criteria, as
 they are presumed to be currently in process and purging them would create
@@ -722,8 +723,7 @@ sub purge
 		),
 		{},
 		$self->get_queue_id(),
-	);
-	croak 'Cannot execute SQL: ' . $dbh->errstr() if defined( $dbh->errstr() );
+	) || croak 'Cannot execute SQL: ' . $dbh->errstr();
 	
 	carp "Leaving cleanup()." if $verbose;
 	# Account for '0E0' which means no rows affected, and translates into no
@@ -881,7 +881,7 @@ sub set_verbose
 
 =head2 create_tables()
 
-Please use C<create_tables()> in C<Queue::DBI::Admin> instead.
+Please use C<create_tables()> in L<Queue::DBI::Admin> instead.
 
 Here is an example that shows how to refactor your call to this deprecated
 function:

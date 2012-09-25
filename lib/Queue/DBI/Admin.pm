@@ -18,11 +18,11 @@ Queue::DBI::Admin - Manage Queue::DBI queues.
 
 =head1 VERSION
 
-Version 2.2.1
+Version 2.3.0
 
 =cut
 
-our $VERSION = '2.2.1';
+our $VERSION = '2.3.0';
 
 
 =head1 SYNOPSIS
@@ -34,8 +34,12 @@ our $VERSION = '2.2.1';
 		database_handle => $dbh,
 	);
 	
-	# Create the tables required by Queue::DBI to store the queues and data.
-	$queues_admin->create_tables();
+	# Check if the tables required by Queue::DBI exist.
+	if ( !$queues_admin->has_tables() )
+	{
+		# Create the tables required by Queue::DBI to store the queues and data.
+		$queues_admin->create_tables();
+	}
 	
 	# Create a new queue.
 	my $queue = $queues_admin->create_queue( $queue_name );
@@ -69,7 +73,7 @@ Please contact me if you need support for another database type, I'm always
 glad to add extensions if you can help me with testing.
 
 
-=head1 METHODS
+=head1 QUEUES ADMINISTRATION METHODS
 
 =head2 new()
 
@@ -86,15 +90,15 @@ Optional parameters:
 
 =over 4
 
-=item * 'queues_table_name'
+=item * queues_table_name
 
-By default, Queue::DBI uses a table named 'queues' to store the queue
+By default, Queue::DBI uses a table named I<queues> to store the queue
 definitions. This allows using your own name, if you want to support separate
 queuing systems or legacy systems.
 
-=item * 'queue_elements_table_name'
+=item * queue_elements_table_name
 
-By default, Queue::DBI uses a table named 'queue_elements' to store the queued
+By default, Queue::DBI uses a table named I<queue_elements> to store the queued
 data. This allows using your own name, if you want to support separate queuing
 systems or legacy systems.
 
@@ -135,161 +139,6 @@ sub new
 	);
 	
 	return $self;
-}
-
-
-=head2 create_tables()
-
-Create the tables required by Queue::DBI to store the queues and data.
-
-	$queues_admin->create_tables(
-		drop_if_exist => $boolean,
-	);
-
-By default, it won't drop any table but you can force that by setting
-'drop_if_exist' to 1.
-
-=cut
-
-sub create_tables
-{
-	my ( $self, %args ) = @_;
-	my $drop_if_exist = delete( $args{'drop_if_exist'} ) || 0;
-	croak 'Unrecognized arguments: ' . join( ', ', keys %args )
-		if scalar( keys %args ) != 0;
-	
-	# Check the database type.
-	my $database_handle = $self->get_database_handle();
-	my $database_type = $database_handle->{'Driver'}->{'Name'} || '';
-	croak "This database type ($database_type) is not supported yet, please email the maintainer of the module for help"
-		if $database_type !~ m/^(?:SQLite|MySQL)$/i;
-	
-	# Prepare the name of the tables.
-	my $queues_table_name = $self->get_queues_table_name();
-	my $quoted_queues_table_name = $database_handle->quote_identifier(
-		$queues_table_name
-	);
-	
-	my $queue_elements_table_name = $self->get_queue_elements_table_name();
-	my $quoted_queue_elements_table_name = $database_handle->quote_identifier(
-		$queue_elements_table_name
-	);
-	
-	# Drop the tables, if requested.
-	# Note: due to foreign key constraints, we need to drop the tables in the
-	# reverse order in which they are created.
-	if ( $drop_if_exist )
-	{
-		$database_handle->do(
-			sprintf(
-				q|DROP TABLE IF EXISTS %s|,
-				$quoted_queue_elements_table_name,
-			)
-		);
-		
-		$database_handle->do(
-			sprintf(
-				q|DROP TABLE IF EXISTS %s|,
-				$quoted_queues_table_name,
-			)
-		);
-	}
-	
-	# Create the list of queues.
-	if ( $database_type eq 'SQLite' )
-	{
-		$database_handle->do(
-			sprintf(
-				q|
-					CREATE TABLE %s
-					(
-						queue_id INTEGER PRIMARY KEY AUTOINCREMENT,
-						name VARCHAR(255) NOT NULL UNIQUE
-					)
-				|,
-				$quoted_queues_table_name,
-			)
-		);
-	}
-	else
-	{
-		my $unique_index_name = $database_handle->quote_identifier(
-			'unq_' . $queues_table_name . '_name',
-		);
-		
-		$database_handle->do(
-			sprintf(
-				q|
-					CREATE TABLE %s
-					(
-						queue_id INT(11) NOT NULL AUTO_INCREMENT,
-						name VARCHAR(255) NOT NULL,
-						PRIMARY KEY (queue_id),
-						UNIQUE KEY %s (name)
-					)
-					ENGINE=InnoDB
-				|,
-				$quoted_queues_table_name,
-				$unique_index_name,
-			)
-		);
-	}
-	
-	# Create the table that will hold the queue elements.
-	if ( $database_type eq 'SQLite' )
-	{
-		$database_handle->do(
-			sprintf(
-				q|
-					CREATE TABLE %s
-					(
-						queue_element_id INTEGER PRIMARY KEY AUTOINCREMENT,
-						queue_id INTEGER NOT NULL,
-						data TEXT,
-						lock_time INT(10) DEFAULT NULL,
-						requeue_count INT(3) DEFAULT '0',
-						created INT(10) NOT NULL DEFAULT '0'
-					)
-				|,
-				$quoted_queue_elements_table_name,
-			)
-		);
-	}
-	else
-	{
-		my $queue_id_index_name = $database_handle->quote_identifier(
-			'idx_' . $queue_elements_table_name . '_queue_id'
-		);
-		my $queue_id_foreign_key_name = $database_handle->quote_identifier(
-			'fk_' . $queue_elements_table_name . '_queue_id'
-		);
-		
-		$database_handle->do(
-			sprintf(
-				q|
-					CREATE TABLE %s
-					(
-						queue_element_id INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-						queue_id INT(11) NOT NULL,
-						data TEXT,
-						lock_time INT(10) UNSIGNED DEFAULT NULL,
-						requeue_count INT(3) UNSIGNED DEFAULT '0',
-						created INT(10) UNSIGNED NOT NULL DEFAULT '0',
-						PRIMARY KEY (queue_element_id),
-						KEY %s (queue_id),
-						CONSTRAINT %s FOREIGN KEY (queue_id) REFERENCES %s (queue_id)
-					)
-					ENGINE=InnoDB
-				|,
-				$quoted_queue_elements_table_name,
-				$queue_id_index_name,
-				$queue_id_foreign_key_name,
-				$quoted_queues_table_name,
-			)
-		);
-	}
-	
-	return;
 }
 
 
@@ -442,7 +291,7 @@ sub delete_queue
 		),
 		{},
 		$queue->get_queue_id(),
-	);
+	) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
 	
 	# Delete the queue.
 	my $queues_table_name = $database_handle->quote_identifier(
@@ -460,7 +309,269 @@ sub delete_queue
 		),
 		{},
 		$queue->get_queue_id(),
+	) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
+	
+	return;
+}
+
+
+=head1 DATABASE SETUP METHODS
+
+=head2 has_tables()
+
+Determine if the tables required for L<Queue::DBI> to operate exist.
+
+In scalar context, this method returns a boolean indicating whether all the
+necessary tables exist:
+
+	# Determine if the tables exist.
+	my $tables_exist = $queues_admin->has_tables();
+
+In list context, this method returns a boolean indicating whether all the
+necessary tables exist, and an arrayref of the name of the missing table(s) if
+any:
+
+	# Determine if the tables exist, and the missing one(s).
+	my ( $tables_exist, $missing_tables ) = $queues_admin->has_tables();
+
+=cut
+
+sub has_tables
+{
+	my ( $self ) = @_;
+	my $missing_tables = [];
+	
+	my $database_handle = $self->get_database_handle();
+	
+	# Check the database type.
+	$self->assert_database_type_supported();
+	
+	# Check if the queues table exists.
+	try
+	{
+		# Disable printing errors out since we expect the statement to fail.
+		local $database_handle->{'PrintError'} = 0;
+		
+		$database_handle->selectrow_array(
+			sprintf(
+				q|
+					SELECT *
+					FROM %s
+				|,
+				$self->get_quoted_queues_table_name(),
+			)
+		);
+	}
+	catch
+	{
+		push( @$missing_tables, $self->get_queues_table_name() );
+	};
+	
+	# Check if the queue elements table exists.
+	try
+	{
+		# Disable printing errors out since we expect the statement to fail.
+		local $database_handle->{'PrintError'} = 0;
+		
+		$database_handle->selectrow_array(
+			sprintf(
+				q|
+					SELECT *
+					FROM %s
+				|,
+				$self->get_quoted_queue_elements_table_name(),
+			)
+		);
+	}
+	catch
+	{
+		push( @$missing_tables, $self->get_queue_elements_table_name() );
+	};
+	
+	my $tables_exist = scalar( @$missing_tables ) == 0 ? 1 : 0;
+	return wantarray()
+		? ( $tables_exist, $missing_tables )
+		: $tables_exist;
+}
+
+
+=head2 create_tables()
+
+Create the tables required by L<Queue::DBI> to store the queues and data.
+
+	$queues_admin->create_tables(
+		drop_if_exist => $boolean,
 	);
+
+By default, it won't drop any table but you can force that by setting
+'drop_if_exist' to 1. See C<drop_tables()> for more information on how tables
+are dropped.
+
+=cut
+
+sub create_tables
+{
+	my ( $self, %args ) = @_;
+	my $drop_if_exist = delete( $args{'drop_if_exist'} ) || 0;
+	croak 'Unrecognized arguments: ' . join( ', ', keys %args )
+		if scalar( keys %args ) != 0;
+	
+	my $database_handle = $self->get_database_handle();
+	
+	# Check the database type.
+	my $database_type = $self->assert_database_type_supported();
+	
+	# Prepare the name of the tables.
+	my $queues_table_name = $self->get_queues_table_name();
+	my $quoted_queues_table_name = $self->get_quoted_queues_table_name();
+	
+	my $queue_elements_table_name = $self->get_queue_elements_table_name();
+	my $quoted_queue_elements_table_name = $self->get_quoted_queue_elements_table_name();
+	
+	# Drop the tables, if requested.
+	$self->drop_tables()
+		if $drop_if_exist;
+	
+	# Create the list of queues.
+	if ( $database_type eq 'SQLite' )
+	{
+		$database_handle->do(
+			sprintf(
+				q|
+					CREATE TABLE %s
+					(
+						queue_id INTEGER PRIMARY KEY AUTOINCREMENT,
+						name VARCHAR(255) NOT NULL UNIQUE
+					)
+				|,
+				$quoted_queues_table_name,
+			)
+		) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
+	}
+	else
+	{
+		my $unique_index_name = $database_handle->quote_identifier(
+			'unq_' . $queues_table_name . '_name',
+		);
+		
+		$database_handle->do(
+			sprintf(
+				q|
+					CREATE TABLE %s
+					(
+						queue_id INT(11) NOT NULL AUTO_INCREMENT,
+						name VARCHAR(255) NOT NULL,
+						PRIMARY KEY (queue_id),
+						UNIQUE KEY %s (name)
+					)
+					ENGINE=InnoDB
+				|,
+				$quoted_queues_table_name,
+				$unique_index_name,
+			)
+		) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
+	}
+	
+	# Create the table that will hold the queue elements.
+	if ( $database_type eq 'SQLite' )
+	{
+		$database_handle->do(
+			sprintf(
+				q|
+					CREATE TABLE %s
+					(
+						queue_element_id INTEGER PRIMARY KEY AUTOINCREMENT,
+						queue_id INTEGER NOT NULL,
+						data TEXT,
+						lock_time INT(10) DEFAULT NULL,
+						requeue_count INT(3) DEFAULT '0',
+						created INT(10) NOT NULL DEFAULT '0'
+					)
+				|,
+				$quoted_queue_elements_table_name,
+			)
+		) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
+	}
+	else
+	{
+		my $queue_id_index_name = $database_handle->quote_identifier(
+			'idx_' . $queue_elements_table_name . '_queue_id'
+		);
+		my $queue_id_foreign_key_name = $database_handle->quote_identifier(
+			'fk_' . $queue_elements_table_name . '_queue_id'
+		);
+		
+		$database_handle->do(
+			sprintf(
+				q|
+					CREATE TABLE %s
+					(
+						queue_element_id INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+						queue_id INT(11) NOT NULL,
+						data TEXT,
+						lock_time INT(10) UNSIGNED DEFAULT NULL,
+						requeue_count INT(3) UNSIGNED DEFAULT '0',
+						created INT(10) UNSIGNED NOT NULL DEFAULT '0',
+						PRIMARY KEY (queue_element_id),
+						KEY %s (queue_id),
+						CONSTRAINT %s FOREIGN KEY (queue_id) REFERENCES %s (queue_id)
+					)
+					ENGINE=InnoDB
+				|,
+				$quoted_queue_elements_table_name,
+				$queue_id_index_name,
+				$queue_id_foreign_key_name,
+				$quoted_queues_table_name,
+			)
+		) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
+	}
+	
+	return;
+}
+
+
+=head2 drop_tables()
+
+Drop the tables used to store the queues and queue data.
+
+Warning: there is no undo for this operation. Make sure you really want to drop
+the tables before using this method.
+
+	$queues_admin->drop_tables();
+
+Note: due to foreign key constraints, the tables are dropped in the reverse
+order in which they are created.
+
+=cut
+
+sub drop_tables
+{
+	my ( $self ) = @_;
+	my $database_handle = $self->get_database_handle();
+	
+	# Check the database type.
+	$self->assert_database_type_supported();
+	
+	# Prepare the name of the tables.
+	my $quoted_queues_table_name = $self->get_quoted_queues_table_name();
+	my $quoted_queue_elements_table_name = $self->get_quoted_queue_elements_table_name();
+	
+	# Drop the tables.
+	# Note: due to foreign key constraints, we need to drop the tables in the
+	# reverse order in which they are created.
+	$database_handle->do(
+		sprintf(
+			q|DROP TABLE IF EXISTS %s|,
+			$quoted_queue_elements_table_name,
+		)
+	) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
+	
+	$database_handle->do(
+		sprintf(
+			q|DROP TABLE IF EXISTS %s|,
+			$quoted_queues_table_name,
+		)
+	) || croak 'Cannot execute SQL: ' . $database_handle->errstr();
 	
 	return;
 }
@@ -470,7 +581,7 @@ sub delete_queue
 
 =head2 get_database_handle()
 
-Returns the database handle associated with the C<Queue::DBI::Admin>.
+Return the database handle associated with the L<Queue::DBI::Admin> object.
 
 	my $database_handle = $queue->get_database_handle();
 
@@ -486,9 +597,9 @@ sub get_database_handle
 
 =head2 get_queues_table_name()
 
-Returns the name of the table used to store queue definitions.
+Return the name of the table used to store queue definitions.
 
-	my $queues_table_name = $queue->get_queues_table_name();
+	my $queues_table_name = $queues_admin->get_queues_table_name();
 
 =cut
 
@@ -504,9 +615,9 @@ sub get_queues_table_name
 
 =head2 get_queue_elements_table_name()
 
-Returns the name of the table used to store queue definitions.
+Return the name of the table used to store queue elements.
 
-	my $queue_elements_table_name = $queue->get_queue_elements_table_name();
+	my $queue_elements_table_name = $queues_admin->get_queue_elements_table_name();
 
 =cut
 
@@ -517,6 +628,95 @@ sub get_queue_elements_table_name
 	return defined( $self->{'table_names'}->{'queue_elements'} ) && ( $self->{'table_names'}->{'queue_elements'} ne '' )
 		? $self->{'table_names'}->{'queue_elements'}
 		: $Queue::DBI::DEFAULT_QUEUE_ELEMENTS_TABLE_NAME;
+}
+
+
+=head2 get_quoted_queues_table_name()
+
+Return the name of the table used to store queue definitions, quoted for
+inclusion in SQL statements.
+
+	my $quoted_queues_table_name = $queues_admin->get_quoted_queues_table_name();
+
+
+=cut
+
+sub get_quoted_queues_table_name
+{
+	my ( $self ) = @_;
+	
+	my $database_handle = $self->get_database_handle();
+	my $queues_table_name = $self->get_queues_table_name();
+	
+	return defined( $queues_table_name )
+		? $database_handle->quote_identifier( $queues_table_name )
+		: undef;
+}
+
+
+=head2 get_quoted_queue_elements_table_name()
+
+Return the name of the table used to store queue elements, quoted for inclusion
+in SQL statements.
+
+	my $quoted_queue_elements_table_name = $queues_admin->get_quoted_queue_elements_table_name();
+
+=cut
+
+sub get_quoted_queue_elements_table_name
+{
+	my ( $self ) = @_;
+	
+	my $database_handle = $self->get_database_handle();
+	my $queue_elements_table_name = $self->get_queue_elements_table_name();
+	
+	return defined( $queue_elements_table_name )
+		? $database_handle->quote_identifier( $queue_elements_table_name )
+		: undef;
+}
+
+
+=head2 assert_database_type_supported()
+
+Assert (i.e., die on failure) whether the database type specified by the
+database handle passed to C<new()> is supported or not.
+
+	my $database_type = $queues_admin->assert_database_type_supported();
+
+Note: the type of the database handle associated with the current object is
+returned when it is supported.
+
+=cut
+
+sub assert_database_type_supported
+{
+	my ( $self ) = @_;
+	
+	# Check the database type.
+	my $database_type = $self->get_database_type();
+	croak "This database type ($database_type) is not supported yet, please email the maintainer of the module for help"
+		if $database_type !~ m/^(?:SQLite|MySQL)$/i;
+	
+	return $database_type;
+}
+
+
+=head2 get_database_type()
+
+Return the database type corresponding to the database handle associated
+with the L<Queue::DBI::Admin> object.
+
+	my $database_type = $queues_admin->get_database_type();
+
+=cut
+
+sub get_database_type
+{
+	my ( $self ) = @_;
+	
+	my $database_handle = $self->get_database_handle();
+	
+	return $database_handle->{'Driver'}->{'Name'} || '';
 }
 
 
@@ -565,7 +765,7 @@ L<http://search.cpan.org/dist/Queue-DBI/>
 =head1 ACKNOWLEDGEMENTS
 
 Thanks to Sergey Bond for suggesting this administration module to extend
-and complete the features offered by C<Queue::DBI>.
+and complete the features offered by L<Queue::DBI>.
 
 
 =head1 COPYRIGHT & LICENSE

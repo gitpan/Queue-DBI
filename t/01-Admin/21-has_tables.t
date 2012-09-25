@@ -24,11 +24,11 @@ ok(
 
 can_ok(
 	'Queue::DBI::Admin',
-	'create_tables',
+	'has_tables',
 );
 
 subtest(
-	'Create default tables.',
+	'Check default tables.',
 	sub
 	{
 		plan( tests => 2 );
@@ -44,18 +44,15 @@ subtest(
 			'Instantiate a new Queue::DBI::Admin object.',
 		);
 		
-		lives_ok(
-			sub
-			{
-				$queue_admin->create_tables();
-			},
-			'Create the default tables.',
+		ok(
+			$queue_admin->has_tables(),
+			'The default tables exist.',
 		);
 	}
 );
 
 subtest(
-	'Create custom tables.',
+	'Check custom tables.',
 	sub
 	{
 		plan( tests => 2 );
@@ -73,12 +70,10 @@ subtest(
 			'Instantiate a new Queue::DBI::Admin object.',
 		);
 		
-		lives_ok(
-			sub
-			{
-				$queue_admin->create_tables();
-			},
-			'Create the custom tables.',
+		ok(
+			$queue_admin->has_tables(),
+			'The custom tables exist.',
 		);
 	}
 );
+
