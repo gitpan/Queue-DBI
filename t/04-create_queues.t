@@ -6,21 +6,13 @@ use warnings;
 use Test::Exception;
 use Test::More tests => 6;
 
-use DBI;
+use lib 't/';
+use LocalTest;
+
 use Queue::DBI;
 
 
-ok(
-	my $dbh = DBI->connect(
-		'dbi:SQLite:dbname=t/test_database',
-		'',
-		'',
-		{
-			RaiseError => 1,
-		}
-	),
-	'Create connection to a SQLite database.',
-);
+my $dbh = LocalTest::ok_database_handle();
 
 # Clean up the tables.
 foreach my $table_name ( qw( queues queue_elements ) )
@@ -47,8 +39,8 @@ foreach my $queue_name ( qw( test1 test2 ) )
 		{
 			$dbh->do(
 				q|
-					INSERT INTO queues( queue_id, name )
-					VALUES( NULL, ? )
+					INSERT INTO queues( name )
+					VALUES( ? )
 				|,
 				{},
 				$queue_name,
@@ -67,8 +59,8 @@ dies_ok(
 		
 		$dbh->do(
 			q|
-				INSERT INTO queues( queue_id, name )
-				VALUES( NULL, ? )
+				INSERT INTO queues( name )
+				VALUES( ? )
 			|,
 			{},
 			'test1',

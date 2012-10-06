@@ -6,21 +6,13 @@ use warnings;
 use Test::Exception;
 use Test::More tests => 4;
 
-use DBI;
+use lib 't/';
+use LocalTest;
+
 use Queue::DBI::Admin;
 
 
-ok(
-	my $dbh = DBI->connect(
-		'dbi:SQLite:dbname=t/01-Admin/test_database',
-		'',
-		'',
-		{
-			RaiseError => 1,
-		}
-	),
-	'Create connection to a SQLite database.',
-);
+my $dbh = LocalTest::ok_database_handle();
 
 can_ok(
 	'Queue::DBI::Admin',
@@ -38,9 +30,9 @@ lives_ok(
 	'Instantiate a new Queue::DBI::Admin object.',
 );
 
-is(
+like(
 	$queue_admin->get_database_type(),
-	'SQLite',
+	qr/^(?:SQLite|MySQL|Pg)$/i,
 	'The database type is correctly determined.',
 );
 
