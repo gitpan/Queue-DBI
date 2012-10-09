@@ -18,11 +18,11 @@ Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storag
 
 =head1 VERSION
 
-Version 2.4.0
+Version 2.4.1
 
 =cut
 
-our $VERSION = '2.4.0';
+our $VERSION = '2.4.1';
 
 our $DEFAULT_QUEUES_TABLE_NAME = 'queues';
 
@@ -84,6 +84,8 @@ This distribution currently supports:
 =item * SQLite
 
 =item * MySQL
+
+=item * PostgreSQL
 
 =back
 
@@ -233,7 +235,7 @@ sub new
 
 Returns the queue ID corresponding to the current queue object.
 
-	my $queue_id = $self->get_queue_id();
+	my $queue_id = $queue->get_queue_id();
 
 =cut
 
@@ -249,23 +251,49 @@ sub get_queue_id
 
 Returns the number of elements in the queue.
 
+	my $elements_count = $queue->count();
+
+Optional parameter:
+
+=over 4
+
+=item * exclude_locked_elements
+
+Exclude locked elements from the count. Default 0.
+
+=back
+
+	my $unlocked_elements_count = $queue->count(
+		exclude_locked_elements => 1
+	);
+
 =cut
 
 sub count
 {
-	my ( $self ) = @_;
+	my ( $self, %args ) = @_;
+	my $exclude_locked_elements = delete( $args{'exclude_locked_elements'} ) || 0;
+	
 	my $verbose = $self->get_verbose();
 	my $dbh = $self->get_dbh();
 	carp "Entering count()." if $verbose;
 	
+	# Prepare optional additional clause to exclude locked elements.
+	my $exclude_locked_elements_sql = $exclude_locked_elements
+		? 'AND lock_time IS NULL'
+		: '';
+	
+	# Count elements.
 	my $data = $dbh->selectrow_arrayref(
 		sprintf(
 			q|
 				SELECT COUNT(*)
 				FROM %s
 				WHERE queue_id = ?
+					%s
 			|,
 			$dbh->quote_identifier( $self->get_queue_elements_table_name() ),
+			$exclude_locked_elements_sql,
 		),
 		{},
 		$self->get_queue_id(),
