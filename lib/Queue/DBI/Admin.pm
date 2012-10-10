@@ -18,11 +18,11 @@ Queue::DBI::Admin - Manage Queue::DBI queues.
 
 =head1 VERSION
 
-Version 2.4.1
+Version 2.4.2
 
 =cut
 
-our $VERSION = '2.4.1';
+our $VERSION = '2.4.2';
 
 
 =head1 SYNOPSIS
@@ -340,54 +340,10 @@ sub has_tables
 	$self->assert_database_type_supported();
 	
 	# Check if the queues table exists.
-	my $queues_table_exists =
-	try
-	{
-		# Disable printing errors out since we expect the statement to fail.
-		local $database_handle->{'PrintError'} = 0;
-		local $database_handle->{'RaiseError'} = 1;
-		
-		$database_handle->selectrow_array(
-			sprintf(
-				q|
-					SELECT *
-					FROM %s
-				|,
-				$self->get_quoted_queues_table_name(),
-			)
-		);
-		
-		return 1;
-	}
-	catch
-	{
-		return 0;
-	};
+	my $queues_table_exists = $self->has_table( 'queues' );
 	
 	# Check if the queue elements table exists.
-	my $queue_elements_table_exists =
-	try
-	{
-		# Disable printing errors out since we expect the statement to fail.
-		local $database_handle->{'PrintError'} = 0;
-		local $database_handle->{'RaiseError'} = 1;
-		
-		$database_handle->selectrow_array(
-			sprintf(
-				q|
-					SELECT *
-					FROM %s
-				|,
-				$self->get_quoted_queue_elements_table_name(),
-			)
-		);
-		
-		return 1;
-	}
-	catch
-	{
-		return 0;
-	};
+	my $queue_elements_table_exists = $self->has_table( 'queue_elements' );
 	
 	# If both tables don't exist, return 0.
 	return 0
@@ -401,58 +357,12 @@ sub has_tables
 		if !$queues_table_exists && $queue_elements_table_exists;
 	
 	# Check if the queues table has the mandatory fields.
-	my $queues_table_has_fields =
-	try
-	{
-		# Disable printing errors out since we expect the statement to fail.
-		local $database_handle->{'PrintError'} = 0;
-		local $database_handle->{'RaiseError'} = 1;
-		
-		$database_handle->selectrow_array(
-			sprintf(
-				q|
-					SELECT queue_id, name
-					FROM %s
-				|,
-				$self->get_quoted_queues_table_name(),
-			)
-		);
-		
-		return 1;
-	}
-	catch
-	{
-		return 0;
-	};
-	
+	my $queues_table_has_fields = $self->has_mandatory_fields( 'queues' );
 	croak "The table '" . $self->get_queues_table_name() . "' exists, but is missing mandatory fields"
 		if !$queues_table_has_fields;
 	
 	# Check if the queue elements table has the mandatory fields.
-	my $queue_elements_table_has_fields =
-	try
-	{
-		# Disable printing errors out since we expect the statement to fail.
-		local $database_handle->{'PrintError'} = 0;
-		local $database_handle->{'RaiseError'} = 1;
-		
-		$database_handle->selectrow_array(
-			sprintf(
-				q|
-					SELECT queue_element_id, queue_id, data, lock_time, requeue_count, created
-					FROM %s
-				|,
-				$self->get_quoted_queue_elements_table_name(),
-			)
-		);
-		
-		return 1;
-	}
-	catch
-	{
-		return 0;
-	};
-	
+	my $queue_elements_table_has_fields = $self->has_mandatory_fields( 'queue_elements' );
 	croak "The table '" . $self->get_queue_elements_table_name() . "' exists, but is missing mandatory fields"
 		if !$queue_elements_table_has_fields;
 	
@@ -677,6 +587,21 @@ sub drop_tables
 	# Check the database type.
 	$self->assert_database_type_supported();
 	
+	# If the tables exist, make sure that they have the mandatory fields. This
+	# prevents a user from deleting a random table using this function.
+	if ( $self->has_table( 'queues' ) )
+	{
+		my $queues_table_name = $self->get_queues_table_name();
+		croak "The table '$queues_table_name' is missing some or all mandatory fields, so we cannot safely determine that it is used by Queue::DBI and delete it"
+			if !$self->has_mandatory_fields( 'queues' );
+	}
+	if ( $self->has_table( 'queue_elements' ) )
+	{
+		my $queue_elements_table_name = $self->get_queue_elements_table_name();
+		croak "The table '$queue_elements_table_name' is missing some or all mandatory fields, so we cannot safely determine that it is used by Queue::DBI and delete it"
+			if !$self->has_mandatory_fields( 'queue_elements' );
+	}
+	
 	# Prepare the name of the tables.
 	my $quoted_queues_table_name = $self->get_quoted_queues_table_name();
 	my $quoted_queue_elements_table_name = $self->get_quoted_queue_elements_table_name();
@@ -842,6 +767,138 @@ sub get_database_type
 	my $database_handle = $self->get_database_handle();
 	
 	return $database_handle->{'Driver'}->{'Name'} || '';
+}
+
+
+=head2 has_table()
+
+Return if a table required by L<Queue::DBI> to operate exists.
+
+	my $has_table = $queues_admin->has_table( $table_type );
+
+Valid table types are:
+
+=over 4
+
+=item * 'queues'
+
+=item * 'queue_elements'
+
+=back
+
+=cut
+
+sub has_table
+{
+	my ( $self, $table_type ) = @_;
+	
+	# Check the table type.
+	croak 'A table type must be specified'
+		if !defined( $table_type );
+	croak "The table type '$table_type' is not valid"
+		if $table_type !~ /\A(?:queues|queue_elements)\Z/x;
+	
+	# Retrieve the table name.
+	my $table_name = $table_type eq 'queues'
+		? $self->get_quoted_queues_table_name()
+		: $self->get_quoted_queue_elements_table_name();
+	
+	# Check if the table exists.
+	my $database_handle = $self->get_database_handle();
+	my $table_exists =
+	try
+	{
+		# Disable printing errors out since we expect the statement to fail.
+		local $database_handle->{'PrintError'} = 0;
+		local $database_handle->{'RaiseError'} = 1;
+		
+		$database_handle->selectrow_array(
+			sprintf(
+				q|
+					SELECT *
+					FROM %s
+				|,
+				$table_name,
+			)
+		);
+		
+		return 1;
+	}
+	catch
+	{
+		return 0;
+	};
+	
+	return $table_exists;
+}
+
+
+=head2 has_mandatory_fields()
+
+Return if a table required by L<Queue::DBI> has the mandatory fields.
+
+	my $has_mandatory_fields = $queues_admin->has_mandatory_fields( $table_type );
+
+Valid table types are:
+
+=over 4
+
+=item * 'queues'
+
+=item * 'queue_elements'
+
+=back
+
+=cut
+
+sub has_mandatory_fields
+{
+	my ( $self, $table_type ) = @_;
+	
+	# Check the table type.
+	croak 'A table type must be specified'
+		if !defined( $table_type );
+	croak "The table type '$table_type' is not valid"
+		if $table_type !~ /\A(?:queues|queue_elements)\Z/x;
+	
+	# Retrieve the table name.
+	my $table_name = $table_type eq 'queues'
+		? $self->get_quoted_queues_table_name()
+		: $self->get_quoted_queue_elements_table_name();
+	
+	# Retrieve the list of fields to check for.
+	my $mandatory_fields = $table_type eq 'queues'
+		? 'queue_id, name'
+		: 'queue_element_id, queue_id, data, lock_time, requeue_count, created';
+	
+	# Check if the fields exist.
+	my $database_handle = $self->get_database_handle();
+	my $has_mandatory_fields =
+	try
+	{
+		# Disable printing errors out since we expect the statement to fail.
+		local $database_handle->{'PrintError'} = 0;
+		local $database_handle->{'RaiseError'} = 1;
+		
+		$database_handle->selectrow_array(
+			sprintf(
+				q|
+					SELECT %s
+					FROM %s
+				|,
+				$mandatory_fields,
+				$table_name,
+			)
+		);
+		
+		return 1;
+	}
+	catch
+	{
+		return 0;
+	};
+	
+	return $has_mandatory_fields;
 }
 
 
