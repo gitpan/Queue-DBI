@@ -18,11 +18,11 @@ Queue::DBI::Admin - Manage Queue::DBI queues.
 
 =head1 VERSION
 
-Version 2.4.2
+Version 2.5.0
 
 =cut
 
-our $VERSION = '2.4.2';
+our $VERSION = '2.5.0';
 
 
 =head1 SYNOPSIS
@@ -136,6 +136,7 @@ sub new
 				'queues'         => $queues_table_name,
 				'queue_elements' => $queue_elements_table_name,
 			},
+			tables_verified => 0,
 		},
 		$class
 	);
@@ -160,6 +161,9 @@ sub create_queue
 	# Verify parameters.
 	croak 'The first parameter must be a queue name'
 		if !defined( $queue_name ) || ( $queue_name eq '' );
+	
+	# Make sure the tables are correctly set up.
+	$self->assert_tables_verified();
 	
 	my $queues_table_name = $database_handle->quote_identifier(
 		$self->get_queues_table_name()
@@ -202,6 +206,9 @@ sub has_queue
 	croak 'The first parameter must be a queue name'
 		if !defined( $queue_name ) || ( $queue_name eq '' );
 	
+	# Make sure the tables are correctly set up.
+	$self->assert_tables_verified();
+	
 	return try
 	{
 		my $queue = $self->retrieve_queue( $queue_name );
@@ -243,6 +250,9 @@ sub retrieve_queue
 	croak 'The first parameter must be a queue name'
 		if !defined( $queue_name ) || ( $queue_name eq '' );
 	
+	# Make sure the tables are correctly set up.
+	$self->assert_tables_verified();
+	
 	# Instantiate a Queue::DBI object.
 	my $queue = Queue::DBI->new(
 		database_handle           => $database_handle,
@@ -273,6 +283,9 @@ sub delete_queue
 	# Verify parameters.
 	croak 'The first parameter must be a queue name'
 		if !defined( $queue_name ) || ( $queue_name eq '' );
+	
+	# Make sure the tables are correctly set up.
+	$self->assert_tables_verified();
 	
 	# Retrieve the queue object, to get the queue ID.
 	my $queue = $self->retrieve_queue( $queue_name );
@@ -899,6 +912,36 @@ sub has_mandatory_fields
 	};
 	
 	return $has_mandatory_fields;
+}
+
+
+=head2 assert_tables_verified()
+
+Assert that the tables exist and are defined correctly.
+
+	$queues_admin->assert_tables_verified();
+
+Note that this will perform the check only once per L<Queue::DBI::Admin>
+object, as this is an expensive check that would otherwise slow down the
+methods that use it.
+
+=cut
+
+sub assert_tables_verified
+{
+	my ( $self ) = @_;
+	
+	return if $self->{'tables_verified'};
+	
+	# If some tables are incorrectly set up, has_tables() will croak here.
+	# It however also returns 0 if no tables are defined, and we need to
+	# turn it into a croak here.
+	$self->has_tables()
+		|| croak 'The queues and queue elements tables need to be created, see Queue::DBI::Admin->create_tables()';
+	
+	$self->{'tables_verified'} = 1;
+	
+	return;
 }
 
 
