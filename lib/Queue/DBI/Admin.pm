@@ -18,11 +18,11 @@ Queue::DBI::Admin - Manage Queue::DBI queues.
 
 =head1 VERSION
 
-Version 2.5.0
+Version 2.5.1
 
 =cut
 
-our $VERSION = '2.5.0';
+our $VERSION = '2.5.1';
 
 
 =head1 SYNOPSIS
@@ -952,9 +952,10 @@ Guillaume Aubert, C<< <aubertg at cpan.org> >>.
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-queue-dbi at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Queue-DBI>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+Please report any bugs or feature requests through the web interface at
+L<https://github.com/guillaumeaubert/Queue-DBI/issues/new>.
+I will be notified, and then you'll automatically be notified of progress on
+your bug as I make changes.
 
 
 =head1 SUPPORT
@@ -968,9 +969,9 @@ You can also look for information at:
 
 =over 4
 
-=item * RT: CPAN's request tracker
+=item * GitHub's request tracker
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Queue-DBI>
+L<https://github.com/guillaumeaubert/Queue-DBI/issues>
 
 =item * AnnoCPAN: Annotated CPAN documentation
 
@@ -980,9 +981,9 @@ L<http://annocpan.org/dist/Queue-DBI>
 
 L<http://cpanratings.perl.org/d/Queue-DBI>
 
-=item * Search CPAN
+=item * MetaCPAN
 
-L<http://search.cpan.org/dist/Queue-DBI/>
+L<https://metacpan.org/release/Queue-DBI>
 
 =back
 
@@ -995,7 +996,7 @@ and complete the features offered by L<Queue::DBI>.
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2009-2012 Guillaume Aubert.
+Copyright 2009-2013 Guillaume Aubert.
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License version 3 as published by the Free

@@ -48,21 +48,21 @@
    "provides" : {
       "Queue::DBI" : {
          "file" : "lib/Queue/DBI.pm",
-         "version" : "v2.5.0"
+         "version" : "v2.5.1"
       },
       "Queue::DBI::Admin" : {
          "file" : "lib/Queue/DBI/Admin.pm",
-         "version" : "v2.5.0"
+         "version" : "v2.5.1"
       },
       "Queue::DBI::Element" : {
          "file" : "lib/Queue/DBI/Element.pm",
-         "version" : "v2.5.0"
+         "version" : "v2.5.1"
       }
    },
    "release_status" : "stable",
    "resources" : {
       "bugtracker" : {
-         "web" : "http://rt.cpan.org/NoAuth/ReportBug.html?Queue=queue-dbi"
+         "web" : "https://github.com/guillaumeaubert/Queue-DBI/issues"
       },
       "homepage" : "https://metacpan.org/release/Queue-DBI",
       "license" : [
@@ -72,5 +72,5 @@
          "url" : "https://github.com/guillaumeaubert/Queue-DBI"
       }
    },
-   "version" : "v2.5.0"
+   "version" : "v2.5.1"
 }

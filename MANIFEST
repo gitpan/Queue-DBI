@@ -9,7 +9,8 @@ MANIFEST.SKIP
 META.json
 META.yml
 Makefile.PL
-README
+README.md
+examples/examples.txt
 ignore.txt
 lib/Queue/DBI.pm
 lib/Queue/DBI/Admin.pm
@@ -53,8 +54,11 @@ t/90-Element/00-load.t
 t/90-Element/30-is_over_lifetime.t
 t/99-cleanup.t
 t/LocalTest.pm
-t/manifest.t
-t/module_versions.t
-t/perlcritic.t
-t/pod-coverage.t
-t/pod.t
+xt/changes.t
+xt/kwalitee.t
+xt/manifest.t
+xt/module_versions.t
+xt/perlcritic.t
+xt/pod-coverage.t
+xt/pod.t
+xt/unix_eol.t
