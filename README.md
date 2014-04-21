@@ -2,6 +2,7 @@ Queue-DBI
 =========
 
 [![Build Status](https://travis-ci.org/guillaumeaubert/Queue-DBI.png?branch=master)](https://travis-ci.org/guillaumeaubert/Queue-DBI)
+[![Coverage Status](https://coveralls.io/repos/guillaumeaubert/Queue-DBI/badge.png?branch=master)](https://coveralls.io/r/guillaumeaubert/Queue-DBI?branch=master)
 
 A queueing module with an emphasis on safety, using DBI as a storage system
 for queued data.
@@ -45,7 +46,7 @@ You can also look for information at:
 LICENSE AND COPYRIGHT
 ---------------------
 
-Copyright (C) 2009-2013 Guillaume Aubert
+Copyright (C) 2009-2014 Guillaume Aubert
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License version 3 as published by the Free
