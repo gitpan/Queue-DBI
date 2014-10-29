@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Data::Dumper;
+use Data::Validate::Type;
 use Carp;
 use Storable qw();
 use MIME::Base64 qw();
@@ -18,11 +19,11 @@ Queue::DBI - A queueing module with an emphasis on safety, using DBI as a storag
 
 =head1 VERSION
 
-Version 2.5.3
+Version 2.6.0
 
 =cut
 
-our $VERSION = '2.5.3';
+our $VERSION = '2.6.0';
 
 our $DEFAULT_QUEUES_TABLE_NAME = 'queues';
 
@@ -181,10 +182,16 @@ sub new
 		croak "Argument '$arg' is needed to create the Queue::DBI object"
 			if !defined( $args{$arg} ) || ( $args{$arg} eq '' );
 	}
-	croak 'Cleanup timeout must be an integer representing seconds'
+	croak 'Argument "cleanup_timeout" must be an integer representing seconds'
 		if defined( $args{'cleanup_timeout'} ) && ( $args{'cleanup_timeout'} !~ m/^\d+$/ );
-	croak 'Lifetime must be an integer representing seconds'
+	croak 'Argument "lifetime" must be an integer representing seconds'
 		if defined( $args{'lifetime'} ) && ( $args{'lifetime'} !~ m/^\d+$/ );
+	croak 'Argument "serializer_freeze" must be a code reference'
+		if defined( $args{'serializer_freeze'} ) && !Data::Validate::Type::is_coderef( $args{'serializer_freeze'} );
+	croak 'Argument "serializer_thaw" must be a code reference'
+		if defined( $args{'serializer_thaw'} ) && !Data::Validate::Type::is_coderef( $args{'serializer_thaw'} );
+	croak 'Arguments "serializer_freeze" and "serializer_thaw" must be defined together'
+		if defined( $args{'serializer_freeze'} ) xor defined( $args{'serializer_thaw'} );
 
 	# Create the object.
 	my $dbh = $args{'database_handle'};
@@ -197,6 +204,11 @@ sub new
 				'queues'         => $args{'queues_table_name'},
 				'queue_elements' => $args{'queue_elements_table_name'},
 			},
+			'serializer' =>
+			{
+				'freeze'	=> $args{'serializer_freeze'},
+				'thaw'		=> $args{'serializer_thaw'},
+			}
 		},
 		$class
 	);
@@ -341,7 +353,7 @@ sub enqueue
 	carp "Entering enqueue()." if $verbose;
 	carp "Data is: " . Dumper( $data ) if $verbose > 1;
 
-	my $encoded_data = MIME::Base64::encode_base64( Storable::freeze( $data ) );
+	my $encoded_data = $self->freeze( $data );
 	croak 'The size of the data to store exceeds the maximum internal storage size available.'
 		if length( $encoded_data ) > $MAX_VALUE_SIZE;
 
@@ -559,7 +571,7 @@ sub retrieve_batch
 			@return,
 			Queue::DBI::Element->new(
 				'queue'         => $self,
-				'data'          => Storable::thaw( MIME::Base64::decode_base64( $row->[1] ) ),
+				'data'          => $self->thaw( $row->[1] ),
 				'id'            => $row->[0],
 				'requeue_count' => $row->[2],
 				'created'       => $row->[3],
@@ -626,7 +638,7 @@ sub get_element_by_id
 
 	my $queue_element = Queue::DBI::Element->new(
 		'queue'         => $self,
-		'data'          => Storable::thaw( MIME::Base64::decode_base64( $data->{'data'} ) ),
+		'data'          => $self->thaw( $data->{'data'} ),
 		'id'            => $data->{'queue_element_id'},
 		'requeue_count' => $data->{'requeue_count'},
 		'created'       => $data->{'created'},
@@ -690,7 +702,7 @@ sub cleanup
 	{
 		my $queue_element = Queue::DBI::Element->new(
 			'queue'         => $self,
-			'data'          => Storable::thaw( MIME::Base64::decode_base64( $row->[1] ) ),
+			'data'          => $self->thaw( $row->[1] ),
 			'id'            => $row->[0],
 			'requeue_count' => $row->[2],
 			'created'       => $row->[3],
@@ -927,6 +939,43 @@ sub set_verbose
 }
 
 
+=head1 INTERNAL METHODS
+
+=head2 freeze()
+
+Serialize an element to store it in a SQL "text" column.
+
+	my $frozen_data = $queue->freeze( $data );
+
+=cut
+
+sub freeze
+{
+	my ( $self, $data ) = @_;
+
+	return defined( $self->{'serializer'} ) && defined( $self->{'serializer'}->{'freeze'} )
+		? $self->{'serializer'}->{'freeze'}($data)
+		: MIME::Base64::encode_base64( Storable::freeze( $data ) );
+}
+
+=head2 thaw()
+
+Deserialize an element which was stored a SQL "text" column.
+
+	my $thawed_data = $queue->thaw( $frozen_data );
+
+=cut
+
+sub thaw
+{
+	my ( $self, $data ) = @_;
+
+	return defined( $self->{'serializer'} ) && defined( $self->{'serializer'}->{'thaw'} )
+		? $self->{'serializer'}->{'thaw'}($data)
+		: Storable::thaw( MIME::Base64::decode_base64( $data ) );
+}
+
+
 =head1 DEPRECATED METHODS
 
 =head2 create_tables()
@@ -1089,15 +1138,6 @@ L<https://metacpan.org/release/Queue-DBI>
 
 L<Guillaume Aubert|https://metacpan.org/author/AUBERTG>,
 C<< <aubertg at cpan.org> >>.
-
-
-=head1 CONTRIBUTORS
-
-=over 4
-
-=item * Jamie McCarthy
-
-=back
 
 
 =head1 ACKNOWLEDGEMENTS
